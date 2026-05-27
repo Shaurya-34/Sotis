@@ -1,0 +1,51 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python caching
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Testing and Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.pytest/
+coverage.xml
+*.lprof
+
+# Build and Packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environment and secrets
+.env
+.env.local
+.env.*
+
+# Logs
+logs/
+*.log
+
+# Local scratch directories
+scratch/
+a.txt
+

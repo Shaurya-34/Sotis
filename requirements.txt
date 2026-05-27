@@ -1,0 +1,21 @@
+# ── Core ──────────────────────────────────────────────────────────────────────
+numpy>=1.26.0               # Fast math for entropy calculations
+scipy>=1.12.0               # Statistical utilities (future use)
+pydantic>=2.6.0             # Schema validation for StepEvent/Subtask data
+python-dateutil>=2.9.0      # Timestamp parsing helpers
+
+# ── LLM API Clients (Phase 1 monitoring stubs, full use in Phase 2) ──────────
+openai>=1.25.0
+anthropic>=0.25.0
+
+# ── Observability (Phase 4) ───────────────────────────────────────────────────
+streamlit>=1.35.0
+rich>=13.7.0                # Console pretty-printing for CLI diagnostics
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest>=8.2.0
+pytest-benchmark>=4.0.0     # Latency micro-benchmarks (Shannon entropy, loop lookup)
+pytest-cov>=5.0.0           # Coverage reports
+
+# ── MCP Server (Phase 5) ──────────────────────────────────────────────────────
+mcp>=1.0.0
