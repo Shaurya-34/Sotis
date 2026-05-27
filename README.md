@@ -17,7 +17,7 @@ Frontier models do not fail because they are simple, but because long-horizon ex
 
 ---
 
-## Active Execution Recovery in 3 Lines
+## Active Execution Recovery in 3 sets of Lines
 
 Unlike passive tracing systems, Sotis operates actively. It intercepts spiraling tool calls, restores files to the last stable checkpoint, compresses history, and injects a resumption briefing.
 
