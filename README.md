@@ -90,7 +90,7 @@ Here is how Sotis stabilizes execution in real time:
 ## The Science: Research-Inspired Reliability
 
 Sotis operationalizes the formal reliability engineering framework introduced in the April 2026 paper:
-*"Beyond pass@1: A Reliability Science Framework for Long-Horizon LLM Agents"* (arXiv:2603.29231v1)
+*["Beyond pass@1: A Reliability Science Framework for Long-Horizon LLM Agents"](https://arxiv.org/abs/2603.29231)* (arXiv:2603.29231)
 
 We translate key theoretical concepts from this paper directly into active runtime layers:
 
