@@ -1,25 +1,111 @@
 # Sotis
 
-**Reliability middleware for long-horizon LLM agents.**
-
-Sotis sits between users and LLM agents, monitoring execution in real time, detecting meltdowns via sliding-window Shannon entropy analysis and Workspace Edit Density loop detection, and transparently resetting context to restore forward progress.
-
-**Based on:** _"Beyond pass@1: A Reliability Science Framework for Long-Horizon LLM Agents"_ (arXiv:2603.29231v1, April 2026)
+Sotis is a Python reliability library for long-running LLM agents that detects meltdown behavior and automatically resets execution before agents spiral into loops or context collapse.
 
 ---
 
-## Core Capabilities
+## The Long-Horizon Failure Problem
 
-| Capability | Description |
-|---|---|
-| **Meltdown Detection** | Sliding-window Shannon entropy (N=5, H_threshold=1.5) + exact loop detection |
-| **Workspace Density Guard** | Detects infinite same-file edit cycles (3 edits without test result changes) |
-| **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (>=60% token savings) |
-| **Graceful Degradation** | GDS scoring rewards partial progress even if a meltdown occurs |
-| **LLM Support** | OpenAI, Anthropic, DeepSeek, Google Gemini via custom ReAct runtime |
-| **Observability** | Premium Streamlit dashboard + structured JSON session logs + text log parser |
-| **LangGraph Integration** | Native middleware node intercepting state and rolling back files |
-| **Document Processing** | Unified multi-format parser (PDF, XLSX, Word, CSV) + Token-based Jaccard similarity (threshold >= 0.65) semantic loop detector |
+Current AI agents fail predictably under long-horizon execution. As they run for longer periods, they accumulate error and drift into terminal failure modes:
+
+* **Infinite Loops**: Repeating the same tool calls with identical arguments.
+* **Semantic Spirals**: Rephrasing failed queries or tool calls hoping for different outcomes.
+* **Context Poisoning**: Flooding the chat history with massive error traces and linter warnings.
+* **Edit Storms**: Making rapid, uncoordinated file edits without shifting validation outputs.
+
+Frontier models do not fail because they are simple, but because long-horizon execution decays their reliability envelope until strategy collapse occurs. Sotis acts as an active runtime stabilizer, monitoring execution in real time, detecting behavioral meltdowns, and transparently resetting context to restore forward progress.
+
+---
+
+## Active Execution Recovery in 3 Lines
+
+Unlike passive tracing systems, Sotis operates actively. It intercepts spiraling tool calls, restores files to the last stable checkpoint, compresses history, and injects a resumption briefing.
+
+```python
+from sotis import SotisGuard
+
+# 1. Initialize the reliability guard
+guard = SotisGuard()
+
+# 2. Watch tool execution events in your agent's loop
+for step in range(max_steps):
+    action = agent.decide()
+    result = tools.execute(action)
+    
+    meltdown = guard.watch(action.name, action.args, result.summary)
+    
+    # 3. Intercept and recover automatically
+    if meltdown:
+        print("Sotis blocked an execution loop! Restoring stable baseline...")
+        guard.reset()
+```
+
+### Raw Telemetry Trace
+
+Here is how Sotis stabilizes execution in real time:
+
+```text
+[Step 22] write_file -> {"path": "src/main.py", "content": "import math"} | Outcome: SUCCESS
+[Step 23] run_tests  -> {"cmd": "pytest"} | Outcome: FAIL (ImportError)
+[Step 24] write_file -> {"path": "src/main.py", "content": "import math"} | Outcome: SUCCESS
+[Step 25] run_tests  -> {"cmd": "pytest"} | Outcome: FAIL (ImportError)
+
+[WARNING] Anomaly detected: Workspace edit storm and exact argument loops
+[INTERCEPT] Sotis Meltdown Interception Triggered!
+[RECOVER] Restored workspace files to stable baseline step 22 diff
+[RECOVER] Distilled session context history (78% token savings)
+[RESUME] Injecting resumption briefing prompt into agent context...
+
+[Step 26] grep_search -> {"query": "math"} | Execution resumed cleanly
+```
+
+---
+
+## Visual Execution Flow
+
+```
+     Agent Begins Task
+             |
+             v
+   Execution Step Loop
+             |
+             v
+   Entropy Rises / Loops Detected (Step 20)
+             |
+             v
+   Sotis Intercepts Meltdown (Step 25)
+             |
+             v
+   Workspace Rolled Back and Context Distilled (>= 60% Token Savings)
+             |
+             v
+   Resumption Briefing Injected
+             |
+             v
+   Execution Resumes Cleanly to Completion
+```
+
+---
+
+## The Science: Research-Inspired Reliability
+
+Sotis operationalizes the formal reliability engineering framework introduced in the April 2026 paper:
+*"Beyond pass@1: A Reliability Science Framework for Long-Horizon LLM Agents"* (arXiv:2603.29231v1)
+
+We translate key theoretical concepts from this paper directly into active runtime layers:
+
+* **Meltdown Onset Point (MOP)**: Quantifies the transition from coherent planning to chaotic looping. Sotis monitors the Shannon entropy of the tool-call distribution over a sliding window (size w=5). A spike in entropy or a tight repeating sequence triggers an immediate Meltdown Onset Point flag.
+* **Reliability Decay**: Demonstrates that agent success rates decay super-linearly with task duration due to positively correlated errors (a confused agent stays confused). Sotis acts as a runtime circuit breaker to reset the error correlation coefficient.
+* **Episodic Memory Failures**: The paper proves that naive episodic memory scaffolds universally degrade long-horizon performance by accumulating step budget and context overhead. Sotis maintains reliability through **controlled checkpointed resets** rather than continuous memory accumulation.
+* **Graceful Degradation Score (GDS)**: Evaluates agent trajectories using weighted directed acyclic graphs of subtask completion. When a meltdown is intercepted, Sotis scores partial progress and resets execution context, allowing agents to preserve partial GDS while starting fresh.
+
+---
+
+## Strongest Differentiator: Active Stabilization vs Passive Tracing
+
+Passive AI developer tooling (such as LangSmith, Langfuse, or Helicone) merely monitors failure, logging tokens and rendering traces *after* your agent has already spent $20 looping in production. 
+
+Sotis is closer to **runtime reliability middleware**. It does not merely observe agent degradation—it actively intercepts loops, rolls back uncommitted file edits, distills conversation context, and redirects the model's reasoning loop in real time.
 
 ---
 
@@ -30,61 +116,14 @@ Sotis/
 ├── sotis/
 │   ├── core/         # Pure computation: entropy, loops, checkpoint, decomposition, GDS
 │   ├── lib/          # ReAct runtime, LangGraph integration + LLM adapters
-│   ├── obs/          # Premium Streamlit dashboard + structured logger
+│   ├── obs/          # Telemetry app + structured JSON logger
 │   └── bench/        # Benchmark harness and task generators
-├── tests/            # High-coverage automated test suite (125 tests)
+├── tests/            # High-coverage automated test suite (127 tests)
 ├── ExperimentLog/    # Real-agent Track 2 stress test run logs
 ├── performance_metrics.txt   # Empirical proof-of-performance ledger
-├── pyproject.toml    # Modern package configuration
+├── pyproject.toml    # Package configuration
 ├── requirements.txt  # Core dependencies
 └── pytest.ini        # Testing settings
-```
-
----
-
-## Getting Started
-
-### Installation
-
-```bash
-# Clone the repository and navigate inside
-cd Sotis
-
-# Create and activate a virtual environment
-python -m venv .venv
-.venv\Scripts\activate        # Windows
-source .venv/bin/activate     # macOS/Linux
-
-# Install Sotis in editable developer mode
-pip install -e .
-```
-
-### The 3-Line Promise
-
-Use Sotis to secure any LLM agent against infinite loops and disorganised tool calling in exactly three lines of code:
-
-```python
-from sotis import SotisGuard
-
-# 1. Initialize the guard
-guard = SotisGuard()
-
-# 2. Watch tool invocations in your agent's loop
-meltdown_detected = guard.watch(tool_name="write_file", tool_args={"path": "app.py"}, result_summary="Written successfully")
-
-# 3. Intercept and recover if Sotis detects a meltdown
-if meltdown_detected:
-    print("Sotis blocked an infinite loop! Triggering transparent reset...")
-    guard.reset()
-```
-
-### Premium Telemetry Dashboard
-
-Launch Sotis's visual Streamlit dashboard to replay structured telemetry logs or parse Track 2 agent stress test logs:
-
-```bash
-# Launch the dashboard
-streamlit run sotis/obs/app.py
 ```
 
 ---
