@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sotis"
+version = "1.0.0"
+description = "MOP-Triggered Context Reset Agent Middleware"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26.0",
+    "pydantic>=2.6.0",
+    "python-dateutil>=2.9.0",
+    "openai>=1.25.0",
+    "anthropic>=0.25.0",
+    "rich>=13.7.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.0",
+    "pytest-benchmark>=4.0.0",
+    "pytest-cov>=5.0.0",
+    "langchain>=0.2.0",
+    "langgraph>=0.0.60"
+]
+langgraph = [
+    "langchain>=0.2.0",
+    "langgraph>=0.0.60"
+]
+obs = [
+    "streamlit>=1.35.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["sotis*"]

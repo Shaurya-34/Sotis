@@ -1,0 +1,1 @@
+Total revenue for Q1, Q2, and Q3: 425000. Q4 revenue could not be retrieved due to a parsing error.
