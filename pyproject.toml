@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sotis"
-version = "1.0.1"
-description = "Python reliability library for long-running LLM agents"
+version = "1.0.2"
+description = "Watches your LLM agent in real time and intercepts meltdowns before they spiral."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
