@@ -113,17 +113,17 @@ Sotis is closer to **runtime reliability middleware**. It does not merely observ
 
 ```
 Sotis/
-├── sotis/
-│   ├── core/         # Pure computation: entropy, loops, checkpoint, decomposition, GDS
-│   ├── lib/          # ReAct runtime, LangGraph integration + LLM adapters
-│   ├── obs/          # Telemetry app + structured JSON logger
-│   └── bench/        # Benchmark harness and task generators
-├── tests/            # High-coverage automated test suite (127 tests)
-├── ExperimentLog/    # Real-agent Track 2 stress test run logs
-├── performance_metrics.txt   # Empirical proof-of-performance ledger
-├── pyproject.toml    # Package configuration
-├── requirements.txt  # Core dependencies
-└── pytest.ini        # Testing settings
+  sotis/
+    core/             # Pure computation: entropy, loops, checkpoint, decomposition, GDS
+    lib/              # ReAct runtime, LangGraph integration + LLM adapters
+    obs/              # Telemetry app + structured JSON logger
+    bench/            # Benchmark harness and task generators
+  tests/              # High-coverage automated test suite (127 tests)
+  ExperimentLog/      # Real-agent Track 2 stress test run logs
+  performance_metrics.txt     # Empirical proof-of-performance ledger
+  pyproject.toml      # Package configuration
+  requirements.txt    # Core dependencies
+  pytest.ini          # Testing settings
 ```
 
 ---
@@ -150,7 +150,7 @@ All phases of the project have been built, rigorously tested, and successfully f
 
 ## Performance Metrics
 
-See [`performance_metrics.txt`](./performance_metrics.txt) — a real-time updated ledger tracking empirical outcomes across all phases showing:
+See [`performance_metrics.txt`](https://github.com/Shaurya-34/Sotis/blob/main/performance_metrics.txt) — a real-time updated ledger tracking empirical outcomes across all phases showing:
 - **Entropy and Loop Detection Latency**: < 0.2ms overhead per step.
 - **Context Distillation Reduction**: **86.14%** token savings in the resumption briefing.
 - **Resilience Gains**: Real-world recovery on circular imports and AST recursive loop traps.
