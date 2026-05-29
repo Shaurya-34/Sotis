@@ -109,7 +109,7 @@ Four key findings from the paper that Sotis directly addresses:
 | Metric | Result |
 |---|---|
 | Entropy + loop detection latency | < 0.2ms per step |
-| Context distillation token reduction | 86.14% |
+| Context distillation token reduction | ~87% (BPE cl100k_base) |
 | Test suite | 127 tests, 88% coverage |
 | Live recovery | Verified on circular import and AST recursive loop traps |
 

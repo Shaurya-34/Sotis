@@ -114,12 +114,16 @@ class DistillationResult:
 # Token estimation helper
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _estimate_tokens(text: str) -> int:
-    """
-    Approximate token count using the chars/4 heuristic.
-    Accurate enough for reduction ratio measurement; avoids tiktoken dependency.
-    """
-    return max(1, len(text) // 4)
+try:
+    import tiktoken
+    _enc = tiktoken.get_encoding("cl100k_base")
+    def _estimate_tokens(text: str) -> int:
+        """Estimate token count using OpenAI's cl100k_base tiktoken BPE encoder."""
+        return len(_enc.encode(text))
+except ImportError:
+    def _estimate_tokens(text: str) -> int:
+        """Approximate token count using the chars/4 heuristic as a fallback."""
+        return max(1, len(text) // 4)
 
 
 def _truncate_diff(diff_text: str, max_lines: int) -> str:

@@ -48,10 +48,18 @@ def test_distillation_result_properties():
 
 
 def test_estimate_tokens():
-    """Test the chars/4 token estimation heuristic."""
-    assert _estimate_tokens("1234") == 1
-    assert _estimate_tokens("12345678") == 2
-    assert _estimate_tokens("") == 1  # max(1, len // 4)
+    """Test token estimation with tiktoken or the chars/4 fallback heuristic."""
+    try:
+        import tiktoken
+        # Tiktoken values
+        assert _estimate_tokens("1234") == 2
+        assert _estimate_tokens("12345678") == 3
+        assert _estimate_tokens("") == 0
+    except ImportError:
+        # Fallback values
+        assert _estimate_tokens("1234") == 1
+        assert _estimate_tokens("12345678") == 2
+        assert _estimate_tokens("") == 1  # max(1, len // 4)
 
 
 def test_truncate_diff():
