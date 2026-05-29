@@ -50,4 +50,8 @@ scratch/
 a.txt
 2603.29231v1.pdf
 
+# Screenshots (keep out of git)
+*.jpeg
+*.jpg
+
 

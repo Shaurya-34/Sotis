@@ -117,6 +117,29 @@ for step in range(max_steps):
 
 ---
 
+## Tuning
+
+The default entropy threshold (`1.5 bits`) is calibrated for agents that use 1-2 tools in tight loops. If your agent legitimately uses 3+ different tools in a short window, the default will fire false positives — `log2(3) = 1.585 > 1.5`.
+
+Raise the threshold for multi-tool agents:
+
+```python
+from sotis import SotisGuard
+from sotis.core.entropy import EntropyConfig
+
+guard = SotisGuard(entropy_config=EntropyConfig(hard_threshold=2.7))
+```
+
+| Threshold | Behavior |
+|---|---|
+| `1.5` (default) | Catches tight loops fast. Will false-positive on diverse tool usage. |
+| `2.0` | Good balance for agents using 3-4 tools regularly. |
+| `2.7` | Permissive — only fires on genuine chaotic switching across 6+ tools. |
+
+This was validated in the [detection gauntlet](ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): default threshold fired a false positive on healthy diverse work (Scenario E), raising to 2.7 eliminated it while preserving 100% true positive detection.
+
+---
+
 ## Active Stabilization, Not Passive Tracing
 
 Tools like LangSmith, Langfuse, and Helicone log what happened after your agent already spent $20 looping in production.
@@ -164,8 +187,13 @@ Four key findings from the paper that Sotis directly addresses:
 | Context distillation token reduction | ~87% (BPE cl100k_base) |
 | Test suite | 127 tests, 88% coverage |
 | Live recovery | Verified on circular import and AST recursive loop traps |
+| Live LLM validation (llama-3.1-8b on Groq) | Raw agent: 1/4 requirements met. Sotis agent: 3/4 requirements met. |
+| Detection accuracy (6-scenario gauntlet) | 100% true positive rate, 0% false negatives |
+| Total API cost for full validation suite | < $0.01 (Groq free tier) |
 
 Full empirical ledger: [`performance_metrics.txt`](https://github.com/Shaurya-34/Sotis/blob/main/performance_metrics.txt)
+
+Real-world validation logs: [`ExperimentLog/real_world_validation/`](ExperimentLog/real_world_validation/)
 
 ---
 

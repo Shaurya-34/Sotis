@@ -1,0 +1,25 @@
+================================================================
+TEST REPORT: Goal Drift | 2026-05-29 21:23
+================================================================
+
+--- NUMBERS (auto-filled) ---
+Raw Agent Score       : 1/4 requirements met
+Sotis Agent Score     : 3/4 requirements met
+Steps (Raw)           : 11
+Steps (Sotis)         : 9
+Sotis Resets          : 2
+
+Raw  — detail: 1/4  [ ] type_hints  [ ] docstrings  [ ] refactored  [x] runs_clean
+Sotis — detail: 3/4  [x] type_hints  [ ] docstrings  [x] refactored  [x] runs_clean
+
+--- YOUR OBSERVATIONS (fill in before sending) ---
+Which requirements did the raw agent miss?
+The raw agent missed type_hints, docstrings, and refactored requirements. It only met the runs_clean requirement (leaving the messy code mostly as-is).
+
+Did Sotis fire any resets, and did they help?
+Yes, Sotis fired 2 resets. They helped significantly by keeping the agent focused on the initial task description, forcing the agent to fulfill the refactored and type_hints requirements.
+
+Did the final Sotis output look better to your eye?
+Yes, the final Sotis code was much cleaner, properly refactored, and had correct type annotations, whereas the raw agent did almost no actual refactoring.
+
+================================================================
