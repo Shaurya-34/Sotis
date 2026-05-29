@@ -5,6 +5,7 @@
 [![PyPI version](https://badge.fury.io/py/sotis.svg)](https://pypi.org/project/sotis/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)]()
+[![Architecture](https://img.shields.io/badge/docs-Architecture-00F2FE)](ARCHITECTURE.md)
 
 ```bash
 pip install sotis
@@ -13,6 +14,57 @@ pip install sotis
 Long-running agents fail in predictable ways — they loop on the same tool calls, flood their context with error traces, and spiral until the task collapses. Sotis detects these failure patterns in real time and transparently resets execution before they take hold.
 
 *Based on ["Beyond pass@1: A Reliability Science Framework for Long-Horizon LLM Agents"](https://arxiv.org/abs/2603.29231) (arXiv:2603.29231, April 2026)*
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    %% Styling and layout
+    classDef default fill:#1E293B,stroke:#334155,color:#F8FAFC;
+    classDef core fill:#0F172A,stroke:#00F2FE,color:#00F2FE,stroke-width:2px;
+    classDef lib fill:#0F172A,stroke:#3B82F6,color:#3B82F6,stroke-width:2px;
+    classDef obs fill:#0F172A,stroke:#10B981,color:#10B981,stroke-width:2px;
+
+    A[Agent Goal / User Prompt] --> B(Task Decomposer)
+    B --> C[Topological DAG of Subtasks]
+    C --> D[Sotis ReAct Runtime / LangGraph Guard]
+
+    subgraph Core ["Sotis Core Layer (Pure Python & Math)"]
+        E(Shannon Entropy Monitor)
+        F(Jaccard & Fingerprint Loop Detector)
+        G(Workspace Density Guard)
+        H(Checkpoint Manager)
+        I(Context Resetter)
+        J(GDS Scorer)
+    end
+    class E,F,G,H,I,J core;
+
+    subgraph Adapters ["LLM Adapters"]
+        K[OpenAI Adapter]
+        L[Anthropic Adapter]
+        M[DeepSeek Adapter]
+    end
+    class K,L,M lib;
+
+    D --> E & F & G
+    E & F & G -->|Meltdown Intercept| H
+    H -->|Workspace Rollback| TargetWorkspace[("Target File Workspace")]
+    H -->|Unified Diffs| I
+    I -->|Distilled Resumption Prompt| D
+
+    subgraph Observability ["Observability & Telemetry"]
+        N[JSON-L Logger]
+        O[Streamlit Dashboard]
+    end
+    class N,O obs;
+
+    D -->|Step Telemetry| N
+    N --> O
+```
+
+> Full architecture details, module descriptions, and design decisions: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
@@ -114,6 +166,22 @@ Four key findings from the paper that Sotis directly addresses:
 | Live recovery | Verified on circular import and AST recursive loop traps |
 
 Full empirical ledger: [`performance_metrics.txt`](https://github.com/Shaurya-34/Sotis/blob/main/performance_metrics.txt)
+
+---
+
+## Benchmarks
+
+**Reliability decay in frontier LLM agents as task horizon grows** *(Khanal et al. 2026 — arXiv:2603.29231)*
+
+![Reliability Decay](charts/3_reliability_decay.png)
+
+**Context distillation: token reduction after meltdown reset** *(measured with tiktoken BPE cl100k_base)*
+
+![Token Reduction](charts/5_token_reduction.png)
+
+**Real agent experiments — meltdown intercepts and outcomes** *(Gemini 3.5 · Groq Llama 70B · Mistral local · OpenRouter Gemini)*
+
+![Real Experiments](charts/6_real_experiments.png)
 
 ---
 
