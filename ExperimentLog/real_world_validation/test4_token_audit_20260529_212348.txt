@@ -1,0 +1,38 @@
+================================================================
+TEST REPORT: Token Audit | 2026-05-29 21:23
+================================================================
+
+--- NUMBERS (auto-filled) ---
+Raw Agent Result      : FAIL
+Sotis Agent Result    : PASS
+Steps (Raw)           : 8
+Steps (Sotis)         : 16
+Sotis Resets          : 0
+Raw Final Context     : 2,854 chars
+Sotis Duration        : 1153 ms
+
+Raw Agent — Context Growth per Step:
+    step   0:      516 chars
+    step   8:     2850 chars
+    step   8:     2854 chars
+
+Sotis — Distillation Results:
+  No resets fired — Sotis completed without needing to prune.
+
+--- IMPORTANT: CHECK YOUR API DASHBOARD ---
+After all 4 tests are done, note the actual dollar amount charged:
+  Groq:  https://console.groq.com/usage
+  OpenAI: https://platform.openai.com/usage
+Actual API cost for full test suite: $0.00 (using Groq free tier)
+
+--- YOUR OBSERVATIONS (fill in before sending) ---
+Did the raw agent's context grow linearly? Faster?
+Yes, the raw agent's context size grew linearly from 516 characters to 2,854 characters over 8 steps as tool calls and responses accumulated.
+
+Did Sotis's distillation fire? Was the reduction significant?
+No, distillation did not fire because the Sotis agent solved the task cleanly in 16 steps without triggering any loop detections or resets.
+
+Did both agents actually solve the task?
+No. The raw agent failed (FAIL) to resolve the cascading KeyError bug, while the Sotis agent successfully resolved the bug and validated the connection string (PASS).
+
+================================================================

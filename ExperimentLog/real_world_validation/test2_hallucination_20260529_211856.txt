@@ -1,0 +1,23 @@
+================================================================
+TEST REPORT: Hallucination Spiral | 2026-05-29 21:18
+================================================================
+
+--- NUMBERS (auto-filled) ---
+Raw Agent Result      : FAIL
+Sotis Agent Result    : PASS
+Steps (Raw)           : 12
+Steps (Sotis)         : 7
+Sotis Interceptions   : 1
+Token Savings         : -172.1% (140 → 381 tokens)
+
+--- YOUR OBSERVATIONS (fill in before sending) ---
+Did Sotis fire when you expected it to?
+Yes, Sotis successfully detected the repetitive write loop (the agent trying to resolve the ImportError by rewriting the same app.py) and fired at step 4 to reset the context.
+
+Did the Sotis agent's final workspace look correct?
+Yes. After the reset, the agent correctly created the missing utils.py file instead of looping on app.py, and the validator successfully passed.
+
+Anything unexpected happen?
+No, the test ran deterministically as expected. Sotis broke the infinite loop, whereas the raw agent hit the step cap and failed.
+
+================================================================
