@@ -279,6 +279,51 @@ class BenchmarkRunner:
         return "\n".join(lines)
 
 
+    def run_all(self) -> None:
+        """Runs the full benchmark, updates the ledger, and writes BENCH_SUMMARY.txt."""
+        results = self.run_benchmark()
+        self.update_ledger(results)
+        self._write_summary(results)
+
+    def _write_summary(self, results: Dict[str, Any]) -> None:
+        """Writes a single summary line to BENCH_SUMMARY.txt at the repo root."""
+        domains = list(results.keys())
+        horizons = ["short", "medium", "long", "very_long"]
+
+        total_base_success = 0
+        total_sotis_success = 0
+        total_runs = 0
+        total_gds_gain = 0.0
+        count = 0
+
+        for d in domains:
+            for h in horizons:
+                data = results[d][h]
+                total_base_success += data["baseline"]["success_runs"]
+                total_sotis_success += data["sotis"]["success_runs"]
+                total_runs += self.repeats
+                base_gds = data["baseline"]["gds_sum"] / self.repeats
+                sotis_gds = data["sotis"]["gds_sum"] / self.repeats
+                total_gds_gain += sotis_gds - base_gds
+                count += 1
+
+        base_pass = (total_base_success / total_runs) * 100
+        sotis_pass = (total_sotis_success / total_runs) * 100
+        avg_gds_gain = total_gds_gain / count if count > 0 else 0.0
+        gain_str = f"+{avg_gds_gain:.3f}" if avg_gds_gain >= 0 else f"{avg_gds_gain:.3f}"
+
+        line = (
+            f"{time.strftime('%Y-%m-%d')} k={self.repeats} domains={','.join(domains)} "
+            f"baseline_pass={base_pass:.1f}% sotis_pass={sotis_pass:.1f}% avg_gds_gain={gain_str}\n"
+        )
+
+        with open("BENCH_SUMMARY.txt", "w", encoding="utf-8") as f:
+            f.write(line)
+
+        print(f"Summary written to BENCH_SUMMARY.txt")
+        print(f"  {line.strip()}")
+
+
 if __name__ == "__main__":
     runner = BenchmarkRunner(repeats=3)
     res = runner.run_benchmark()
