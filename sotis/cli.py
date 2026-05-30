@@ -8,7 +8,6 @@ Commands
 sotis dashboard   — Launch the Streamlit observability dashboard
 sotis benchmark   — Run the empirical benchmark suite
 sotis demo        — Run the built-in meltdown/recovery demo
-sotis mcp         — Run the MCP server (stdio) for Claude Code / Desktop
 """
 
 from __future__ import annotations
@@ -25,8 +24,6 @@ def main() -> None:
         _run_benchmark()
     elif command == "demo":
         _run_demo()
-    elif command == "mcp":
-        _run_mcp()
     else:
         _print_help()
 
@@ -70,18 +67,6 @@ def _run_demo() -> None:
     mod.run_demo()
 
 
-def _run_mcp() -> None:
-    try:
-        from sotis.mcp_server import main as mcp_main
-    except ImportError:
-        print(
-            "[sotis] The MCP SDK is required for the MCP server.\n"
-            "Install it with:  pip install sotis[mcp]"
-        )
-        sys.exit(1)
-    mcp_main()
-
-
 def _print_help() -> None:
     print(
         "Sotis — watches your LLM agent and catches it before it spirals.\n"
@@ -90,7 +75,6 @@ def _print_help() -> None:
         "  sotis dashboard    Launch the Streamlit observability dashboard\n"
         "  sotis benchmark    Run the empirical benchmark suite\n"
         "  sotis demo         Run the built-in meltdown/recovery demo\n"
-        "  sotis mcp          Run the MCP server for Claude Code / Desktop\n"
         "\n"
         "Docs:  https://github.com/Shaurya-34/Sotis\n"
         "PyPI:  https://pypi.org/project/sotis/\n"

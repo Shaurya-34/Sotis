@@ -35,9 +35,6 @@ langgraph = [
 obs = [
     "streamlit>=1.35.0"
 ]
-mcp = [
-    "mcp>=1.2.0"
-]
 
 [tool.setuptools.packages.find]
 where = ["."]
