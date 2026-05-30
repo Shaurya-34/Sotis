@@ -30,65 +30,115 @@ st.set_page_config(
 # ─── CSS ──────────────────────────────────────────────────────────────────────
 st.html("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
-html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
-code, pre, .stCode        { font-family: 'JetBrains Mono', monospace !important; }
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+    background-color: #080C14;
+}
+code, pre, .stCode { font-family: 'JetBrains Mono', monospace !important; }
 
-.metric-card {
-    background: rgba(15,23,42,0.6);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 12px;
-    padding: 1.2rem 1.4rem;
-    transition: border-color .2s ease;
+/* ── Metric cards: left-bar, no rounded border ── */
+.m-card {
+    background: #0D1320;
+    border-left: 3px solid #1E293B;
+    padding: 1.1rem 1.4rem;
+    position: relative;
+    overflow: hidden;
 }
-.metric-card:hover { border-color: rgba(0,242,254,0.3); }
-.metric-label {
-    font-size: .72rem; font-weight: 700; letter-spacing: .09rem;
-    text-transform: uppercase; color: #475569; margin-bottom: .45rem;
+.m-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, rgba(255,255,255,.02) 0%, transparent 60%);
+    pointer-events: none;
 }
-.metric-value { font-size: 2rem; font-weight: 800; line-height: 1.1; margin: 0; }
-
-.badge {
-    display: inline-block; padding: .22rem .85rem; border-radius: 999px;
-    font-size: .78rem; font-weight: 700; letter-spacing: .05rem;
+.m-label {
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .14rem;
+    text-transform: uppercase;
+    color: #374151;
+    margin-bottom: .5rem;
 }
-.badge-RUNNING     { background:rgba(59,130,246,.12); color:#60A5FA; border:1px solid rgba(59,130,246,.3); }
-.badge-MELTDOWN    { background:rgba(245,158,11,.12);  color:#FBBF24; border:1px solid rgba(245,158,11,.3); }
-.badge-COMPLETED   { background:rgba(16,185,129,.12);  color:#34D399; border:1px solid rgba(16,185,129,.3); }
-.badge-RESUMED     { background:rgba(139,92,246,.12);  color:#A78BFA; border:1px solid rgba(139,92,246,.3); }
-.badge-HARD_FAILED { background:rgba(239,68,68,.12);   color:#F87171; border:1px solid rgba(239,68,68,.3); }
-.badge-INTERRUPTED { background:rgba(239,68,68,.12);   color:#F87171; border:1px solid rgba(239,68,68,.3); }
-.badge-UNKNOWN     { background:rgba(100,116,139,.12); color:#94A3B8; border:1px solid rgba(100,116,139,.3); }
-
-.live-dot {
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    background: #34D399; margin-right: 5px; vertical-align: middle;
-    animation: pulse-dot 1.4s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-    0%,100% { opacity:1; transform:scale(1); }
-    50%      { opacity:.3; transform:scale(.7); }
+.m-value {
+    font-size: 3rem;
+    font-weight: 900;
+    line-height: 1;
+    margin: 0;
+    letter-spacing: -.03rem;
 }
 
-.meltdown-item {
-    background: rgba(239,68,68,.07);
-    border: 1px solid rgba(239,68,68,.18);
-    border-radius: 8px; padding: .7rem 1rem; margin-bottom: .45rem;
+/* ── Status badge: stark pill ── */
+.s-badge {
+    display: inline-block;
+    padding: .18rem .7rem;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .1rem;
+    text-transform: uppercase;
+    border-radius: 3px;
 }
-.meltdown-step   { font-size: .78rem; color: #F87171; font-weight: 700; }
-.meltdown-reason { font-size: .78rem; color: #64748B; margin-top: .15rem; }
+.s-RUNNING     { background: #1D2D44; color: #60A5FA; }
+.s-MELTDOWN    { background: #2D1D0A; color: #FB923C; }
+.s-COMPLETED   { background: #0D2B1D; color: #34D399; }
+.s-RESUMED     { background: #1F1635; color: #A78BFA; }
+.s-HARD_FAILED { background: #2D0F0F; color: #F87171; }
+.s-INTERRUPTED { background: #2D0F0F; color: #F87171; }
+.s-UNKNOWN     { background: #1A1F2E; color: #64748B; }
 
-.subtask-row {
-    padding: .55rem .8rem;
-    border-radius: 0 8px 8px 0;
-    margin-bottom: .45rem;
-    background: rgba(15,23,42,.45);
+/* ── Live indicator ── */
+.live-pip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .1rem;
+    color: #00E396; text-transform: uppercase;
 }
-.subtask-title  { font-size: .84rem; font-weight: 600; }
-.subtask-detail { font-size: .73rem; color: #475569; margin-top: .18rem; }
+.live-pip::before {
+    content: '';
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: #00E396;
+    animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink {
+    0%,100% { opacity: 1; } 50% { opacity: .2; }
+}
+
+/* ── Meltdown feed ── */
+.md-item {
+    border-left: 3px solid #FF4560;
+    background: #130A0A;
+    padding: .65rem 1rem;
+    margin-bottom: .4rem;
+}
+.md-step   { font-size: .72rem; color: #FF4560; font-weight: 800;
+             letter-spacing: .06rem; font-family: 'JetBrains Mono', monospace; }
+.md-detail { font-size: .76rem; color: #4B5563; margin-top: .15rem; }
+
+/* ── Subtask rows ── */
+.st-row {
+    border-left: 3px solid #1E293B;
+    background: #0D1320;
+    padding: .6rem 1rem;
+    margin-bottom: .35rem;
+}
+.st-title  { font-size: .84rem; font-weight: 700; }
+.st-detail { font-size: .7rem; color: #374151; margin-top: .2rem;
+             font-family: 'JetBrains Mono', monospace; }
+
+/* ── Section headings ── */
+.section-head {
+    font-size: .65rem; font-weight: 800; letter-spacing: .18rem;
+    text-transform: uppercase; color: #374151;
+    border-bottom: 1px solid #0F1828;
+    padding-bottom: .4rem; margin-bottom: 1rem;
+}
+
+/* ── Divider ── */
+hr { border-color: #0F1828 !important; margin: .8rem 0 1.2rem !important; }
 </style>
 """)
+
+# ─── Config.toml sync ─────────────────────────────────────────────────────────
 
 # ─── Session state ────────────────────────────────────────────────────────────
 for _k, _v in [
@@ -104,21 +154,19 @@ for _k, _v in [
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _fmt_session_name(path: str) -> str:
-    """Turn a session filename into a readable label."""
     name = os.path.basename(path).replace("session_", "").replace(".json", "")
-    # bench sessions: bench-sotis-se-medium-2 → SE · medium · run 2
     if name.startswith("bench-"):
         parts = name.split("-")
-        # parts: ['bench', 'sotis'|'base', domain, horizon, run]
         if len(parts) >= 5:
             agent   = "Sotis" if parts[1] == "sotis" else "Baseline"
             domain  = parts[2].upper()
             horizon = parts[3].replace("_", " ")
             run     = parts[4]
-            return f"{agent} · {domain} · {horizon} · run {run}"
-    # live sessions: sotis-lg-feb57846 → live · feb57846
+            return f"{agent}  ·  {domain}  ·  {horizon}  ·  run {run}"
     if name.startswith("sotis-lg-"):
-        return f"live · {name[len('sotis-lg-'):]}"
+        return f"live  ·  {name[len('sotis-lg-'):]}"
+    if name.startswith("sotis-mcp-"):
+        return f"mcp  ·  {name[len('sotis-mcp-'):]}"
     return name
 
 
@@ -149,18 +197,18 @@ def _load_incremental(path: str):
         ns, nm, nsn = _read_json_lines(fh)
         return ns, nm, nsn, fh.tell()
 
-
 # ─── Discover sessions ────────────────────────────────────────────────────────
 
 log_files = sorted(glob.glob(os.path.join("logs", "session_*.json")), reverse=True)
 
 if not log_files:
     st.markdown(
-        "<div style='padding:4rem 0;text-align:center;color:#475569'>"
-        "<div style='font-size:3rem'>🛡️</div>"
-        "<div style='font-size:1.2rem;font-weight:700;margin:.6rem 0;color:#64748B'>No sessions found</div>"
-        "<div style='font-size:.9rem'>Run <code>sotis benchmark</code> to generate telemetry,<br>"
-        "or start an agent with <code>SotisLangGraphGuard</code> to stream live events here.</div>"
+        "<div style='padding:5rem 0;text-align:center'>"
+        "<div style='font-size:.65rem;font-weight:800;letter-spacing:.18rem;"
+        "text-transform:uppercase;color:#1E293B;margin-bottom:1.5rem'>No Data</div>"
+        "<div style='font-size:1.1rem;font-weight:700;color:#1E293B'>No session files in logs/</div>"
+        "<div style='font-size:.85rem;color:#0F172A;margin-top:.5rem'>"
+        "Run <code>sotis benchmark</code> or connect an agent with SotisLangGraphGuard</div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -172,13 +220,14 @@ brand_col, selector_col, toggle_col = st.columns([2, 6, 2])
 
 with brand_col:
     st.markdown(
-        "<div style='padding-top:.4rem'>"
-        "<span style='font-size:1.6rem;font-weight:800;"
-        "background:linear-gradient(135deg,#00F2FE,#4FACFE);"
+        "<div style='padding-top:.45rem'>"
+        "<span style='font-size:1.45rem;font-weight:900;letter-spacing:-.03rem;"
+        "background:linear-gradient(135deg,#00F2FE 0%,#4FACFE 100%);"
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>"
-        "🛡️ Sotis</span>"
-        "<div style='font-size:.7rem;color:#334155;margin-top:.1rem;letter-spacing:.05rem'>"
-        "RESILIENCE DASHBOARD</div>"
+        "SOTIS</span>"
+        "<div style='font-size:.58rem;font-weight:700;letter-spacing:.18rem;"
+        "text-transform:uppercase;color:#1E293B;margin-top:.15rem'>"
+        "Resilience Dashboard</div>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -194,7 +243,7 @@ with selector_col:
 with toggle_col:
     st.write("")
     live_mode = st.toggle(
-        "🔴  Live Mode",
+        "Live Mode",
         value=False,
         help="Auto-refreshes every 2s. Run your agent in another terminal.",
     )
@@ -239,37 +288,53 @@ else:
 # ─── METRIC ROW ───────────────────────────────────────────────────────────────
 
 badge_key    = status if status in ("RUNNING","MELTDOWN","COMPLETED","RESUMED","HARD_FAILED","INTERRUPTED") else "UNKNOWN"
-color_resets = "#34D399" if total_resets == 0 else "#FBBF24" if total_resets == 1 else "#F87171"
-color_gds    = "#34D399" if gds_val > 0.7  else "#FBBF24" if gds_val > 0.4  else "#F87171"
-live_dot     = "<span class='live-dot'></span>" if live_mode else ""
+color_resets = "#00E396" if total_resets == 0 else "#FEB019" if total_resets == 1 else "#FF4560"
+color_gds    = "#00E396" if gds_val > 0.7 else "#FEB019" if gds_val > 0.4 else "#FF4560"
+bar_resets   = "#00E396" if total_resets == 0 else "#FEB019" if total_resets == 1 else "#FF4560"
+bar_gds      = "#00E396" if gds_val > 0.7 else "#FEB019" if gds_val > 0.4 else "#FF4560"
+
+live_indicator = "<span class='live-pip'>live</span>" if live_mode else ""
 
 mc1, mc2, mc3, mc4 = st.columns(4)
 with mc1:
-    st.markdown(f"""<div class='metric-card'>
-        <div class='metric-label'>Status {live_dot}</div>
-        <div style='margin-top:.35rem'><span class='badge badge-{badge_key}'>{html.escape(status)}</span></div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='m-card' style='border-left-color:#4FACFE'>"
+        f"<div class='m-label'>Status &nbsp;{live_indicator}</div>"
+        f"<div style='margin-top:.4rem'><span class='s-badge s-{badge_key}'>{html.escape(status)}</span></div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 with mc2:
-    st.markdown(f"""<div class='metric-card'>
-        <div class='metric-label'>Steps</div>
-        <div class='metric-value' style='color:#60A5FA'>{step_count}</div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='m-card' style='border-left-color:#4FACFE'>"
+        f"<div class='m-label'>Steps</div>"
+        f"<div class='m-value' style='color:#60A5FA'>{step_count}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 with mc3:
-    st.markdown(f"""<div class='metric-card'>
-        <div class='metric-label'>Resets</div>
-        <div class='metric-value' style='color:{color_resets}'>{total_resets}</div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='m-card' style='border-left-color:{bar_resets}'>"
+        f"<div class='m-label'>Resets</div>"
+        f"<div class='m-value' style='color:{color_resets}'>{total_resets}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 with mc4:
-    st.markdown(f"""<div class='metric-card'>
-        <div class='metric-label'>GDS Score</div>
-        <div class='metric-value' style='color:{color_gds}'>{gds_val:.3f}</div>
-    </div>""", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='m-card' style='border-left-color:{bar_gds}'>"
+        f"<div class='m-label'>GDS Score</div>"
+        f"<div class='m-value' style='color:{color_gds}'>{gds_val:.3f}</div>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
 st.write("")
 
 # ─── ENTROPY CHART — full width ───────────────────────────────────────────────
 
-st.markdown("#### Entropy H(t) — Tool Sequence Diversity")
+st.markdown("<div class='section-head'>Entropy H(t) — Tool Sequence Diversity</div>",
+            unsafe_allow_html=True)
 
 if steps:
     meltdown_steps = {m.get("triggered_at_step", -1) for m in meltdowns}
@@ -290,88 +355,129 @@ if steps:
         })
 
     df_e   = pd.DataFrame(entropy_rows)
-    x_axis = alt.X("Step:Q", axis=alt.Axis(grid=False, labelColor="#475569", titleColor="#475569",
-                                            domainColor="#1E293B", tickColor="#1E293B"))
-    y_axis = alt.Y("H(t):Q", scale=alt.Scale(domain=[0, 3.2]),
-                   axis=alt.Axis(labelColor="#475569", titleColor="#475569",
-                                 domainColor="#1E293B", tickColor="#1E293B"))
+    x_axis = alt.X("Step:Q", axis=alt.Axis(
+        grid=True, gridColor="#0F1828", gridOpacity=1,
+        labelColor="#374151", titleColor="#374151",
+        domainColor="#0F1828", tickColor="#0F1828",
+        labelFont="JetBrains Mono", titleFont="Inter",
+    ))
+    y_axis = alt.Y("H(t):Q", scale=alt.Scale(domain=[0, 3.2]), axis=alt.Axis(
+        grid=True, gridColor="#0F1828", gridOpacity=1,
+        labelColor="#374151", titleColor="#374151",
+        domainColor="#0F1828", tickColor="#0F1828",
+        labelFont="JetBrains Mono", titleFont="Inter",
+    ))
 
-    area  = alt.Chart(df_e).mark_area(color="#4FACFE", opacity=0.07).encode(x=x_axis, y=y_axis)
-    line  = alt.Chart(df_e).mark_line(color="#4FACFE", strokeWidth=2.5).encode(x=x_axis, y=y_axis)
-    thres = alt.Chart(pd.DataFrame({"y": [1.5]})).mark_rule(
-        color="#F87171", strokeDash=[5, 4], strokeWidth=1.5
+    # Gradient area fill
+    gradient_area = alt.Chart(df_e).mark_area(
+        line={"color": "#00F2FE", "strokeWidth": 2},
+        color=alt.Gradient(
+            gradient="linear",
+            stops=[
+                alt.GradientStop(color="rgba(0,242,254,0.25)", offset=1),
+                alt.GradientStop(color="rgba(0,242,254,0.0)",  offset=0),
+            ],
+            x1=1, x2=1, y1=1, y2=0,
+        ),
+    ).encode(x=x_axis, y=y_axis)
+
+    # Meltdown threshold
+    threshold = alt.Chart(pd.DataFrame({"y": [1.5]})).mark_rule(
+        color="#FF4560", strokeDash=[4, 4], strokeWidth=1.5
     ).encode(y="y:Q")
-    dots  = alt.Chart(df_e).mark_point(size=110, filled=True, color="#F59E0B").encode(
+
+    # Meltdown dots
+    dots = alt.Chart(df_e).mark_point(size=120, filled=True, color="#FEB019").encode(
         x=x_axis, y=y_axis,
         opacity=alt.condition(alt.datum["Meltdown"], alt.value(1), alt.value(0)),
         tooltip=[alt.Tooltip("Step:Q"), alt.Tooltip("H(t):Q", format=".3f")],
     )
 
     chart = (
-        (area + line + thres + dots)
-        .properties(height=250)
-        .configure_view(strokeWidth=0, fill="transparent")
-        .configure(background="transparent")
+        (gradient_area + threshold + dots)
+        .properties(height=240, background="#080C14")
+        .configure_view(strokeWidth=0, fill="#080C14")
     )
     st.altair_chart(chart, width="stretch")
-    st.caption("Red dashed line = meltdown threshold H = 1.5 bits  ·  Orange dots = intercepted meltdowns")
+    st.markdown(
+        "<div style='font-size:.65rem;color:#1E293B;letter-spacing:.04rem;margin-top:-.3rem'>"
+        "RED DASHED = MELTDOWN THRESHOLD (H = 1.5 bits) &nbsp;·&nbsp; AMBER DOTS = INTERCEPTED MELTDOWNS"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 else:
-    st.info("No trajectory data yet. Select a session file or enable Live Mode.")
+    st.markdown(
+        "<div style='padding:2rem;text-align:center;color:#1E293B;font-size:.85rem'>"
+        "No trajectory data. Select a session or enable Live Mode.</div>",
+        unsafe_allow_html=True,
+    )
 
 st.write("")
 
-# ─── MIDDLE ROW: Subtask DAG | Meltdown Feed ──────────────────────────────────
+# ─── MIDDLE ROW ───────────────────────────────────────────────────────────────
 
 dag_col, feed_col = st.columns(2)
 
 with dag_col:
-    st.markdown("#### Subtask Progress")
+    st.markdown("<div class='section-head'>Subtask Progress</div>", unsafe_allow_html=True)
     if last_snapshot and last_snapshot.get("subtasks"):
-        _colors = {"DONE": "#34D399", "ACTIVE": "#60A5FA", "PENDING": "#334155", "HARD_FAILED": "#F87171"}
-        _icons  = {"DONE": "✅", "ACTIVE": "⚡", "PENDING": "⏳", "HARD_FAILED": "❌"}
+        _colors = {
+            "DONE":        "#00E396",
+            "ACTIVE":      "#00F2FE",
+            "PENDING":     "#1E293B",
+            "HARD_FAILED": "#FF4560",
+        }
+        _icons = {"DONE": "✓", "ACTIVE": "▶", "PENDING": "○", "HARD_FAILED": "✕"}
         for s in last_snapshot["subtasks"]:
-            c = _colors.get(s["status"], "#475569")
+            c = _colors.get(s["status"], "#374151")
             i = _icons.get(s["status"], "·")
             st.markdown(
-                f"<div class='subtask-row' style='border-left:3px solid {c}'>"
-                f"<div class='subtask-title' style='color:{c}'>{i} {html.escape(s['description'])}</div>"
-                f"<div class='subtask-detail'>"
-                f"Steps: {s.get('completed_steps',0)} &nbsp;·&nbsp; "
-                f"Resets: {s.get('resets_used',0)} &nbsp;·&nbsp; "
-                f"Weight: {s['gds_weight']*100:.0f}%"
+                f"<div class='st-row' style='border-left-color:{c}'>"
+                f"<div class='st-title' style='color:{c}'>{i} &nbsp;{html.escape(s['description'])}</div>"
+                f"<div class='st-detail'>"
+                f"steps {s.get('completed_steps',0)} &nbsp;/&nbsp; "
+                f"resets {s.get('resets_used',0)} &nbsp;/&nbsp; "
+                f"weight {s['gds_weight']*100:.0f}%"
                 f"</div></div>",
                 unsafe_allow_html=True,
             )
     else:
-        st.info("No subtask data for this session.")
+        st.markdown(
+            "<div style='font-size:.8rem;color:#1E293B;padding:.5rem 0'>"
+            "No subtask decomposition data for this session.</div>",
+            unsafe_allow_html=True,
+        )
 
 with feed_col:
-    st.markdown("#### Meltdown Incidents")
+    st.markdown("<div class='section-head'>Meltdown Incidents</div>", unsafe_allow_html=True)
     if meltdowns:
         with st.container(height=300):
             for m in reversed(meltdowns):
-                at   = m.get("triggered_at_step", "?")
-                rsn  = m.get("reason", "MELTDOWN")
-                ev   = m.get("entropy_value", "")
-                lt   = m.get("loop_tool") or ""
-                ev_s = f" · H={ev:.3f}" if isinstance(ev, float) else ""
-                detail = f"{lt}{ev_s}".strip(" ·")
+                at     = m.get("triggered_at_step", "?")
+                rsn    = m.get("reason", "MELTDOWN")
+                ev     = m.get("entropy_value", "")
+                lt     = m.get("loop_tool") or ""
+                ev_s   = f"H={ev:.3f}" if isinstance(ev, float) else ""
+                detail = "  ·  ".join(filter(None, [lt, ev_s])) or "context reset · workspace rolled back"
                 st.markdown(
-                    f"<div class='meltdown-item'>"
-                    f"<div class='meltdown-step'>⚡ Step {at} — {html.escape(rsn)}</div>"
-                    f"<div class='meltdown-reason'>"
-                    f"{html.escape(detail) if detail else 'Meltdown intercepted — context reset and workspace rolled back.'}"
-                    f"</div></div>",
+                    f"<div class='md-item'>"
+                    f"<div class='md-step'>[STEP {at}] &nbsp; {html.escape(rsn)}</div>"
+                    f"<div class='md-detail'>{html.escape(detail)}</div>"
+                    f"</div>",
                     unsafe_allow_html=True,
                 )
     else:
-        st.success("No meltdowns detected — agent running cleanly.")
+        st.markdown(
+            "<div style='font-size:.8rem;color:#00E396;padding:.5rem 0'>"
+            "● &nbsp;No meltdowns — agent running cleanly.</div>",
+            unsafe_allow_html=True,
+        )
 
 st.write("")
 
-# ─── STEP EXPLORER — bottom ───────────────────────────────────────────────────
+# ─── STEP EXPLORER ────────────────────────────────────────────────────────────
 
-with st.expander("🔍  Step Explorer", expanded=False):
+with st.expander("STEP EXPLORER", expanded=False):
     if steps:
         if len(steps) > 1:
             step_idx = st.slider(
@@ -386,18 +492,25 @@ with st.expander("🔍  Step Explorer", expanded=False):
         active = steps[step_idx - 1]
         left, right = st.columns([1, 2])
         with left:
-            st.markdown(f"**Step** &nbsp; `{active.get('step_index', step_idx)}`")
-            st.markdown(f"**Tool** &nbsp; `{html.escape(active['tool_name'])}`")
-            if "node" in active:
-                st.markdown(f"**Node** &nbsp; `{html.escape(active['node'])}`")
+            st.markdown(
+                f"<div style='font-family:JetBrains Mono,monospace;font-size:.8rem;line-height:1.8;color:#374151'>"
+                f"<span style='color:#4FACFE'>STEP</span> &nbsp;{active.get('step_index', step_idx)}<br>"
+                f"<span style='color:#4FACFE'>TOOL</span> &nbsp;{html.escape(active['tool_name'])}<br>"
+                f"{'<span style=color:#4FACFE>NODE</span> &nbsp;' + html.escape(active['node']) if 'node' in active else ''}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
         with right:
-            st.caption("Arguments")
+            st.caption("ARGS")
             st.json(active.get("tool_args", {}), expanded=True)
         if active.get("result_summary"):
-            st.caption("Result")
+            st.caption("RESULT")
             st.code(active["result_summary"], language="text")
     else:
-        st.info("No steps to explore yet.")
+        st.markdown(
+            "<div style='font-size:.8rem;color:#1E293B;padding:.5rem 0'>No steps yet.</div>",
+            unsafe_allow_html=True,
+        )
 
 # ─── LIVE AUTO-REFRESH ────────────────────────────────────────────────────────
 if live_mode:
