@@ -17,6 +17,9 @@ dependencies = [
     "rich>=13.7.0"
 ]
 
+[project.scripts]
+sotis = "sotis.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.0",
