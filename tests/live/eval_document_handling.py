@@ -1,6 +1,6 @@
 """
-tests/run_live_document_handling
-================================
+tests/live/eval_document_handling
+==================================
 Dual-mode LangGraph ReAct agent runner and Document Handling (DH) stress-test (Phase 11).
 
 This script:
@@ -68,6 +68,14 @@ WORKSPACE_DIR = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "ExperimentLog", "document handling loop", "workspace")
 )
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
+
+def _resolve_workspace_path(file_path: str) -> str | None:
+    """Resolve and validate that file_path stays within WORKSPACE_DIR. Returns None on traversal attempt."""
+    full = os.path.realpath(os.path.join(WORKSPACE_DIR, file_path))
+    workspace_root = os.path.realpath(WORKSPACE_DIR)
+    if not (full == workspace_root or full.startswith(workspace_root + os.sep)):
+        return None
+    return full
 
 
 def ensure_test_workspace_setup() -> None:
@@ -161,7 +169,9 @@ def ensure_test_workspace_setup() -> None:
 @tool
 def parse_pdf_document(file_path: str, pages: Optional[List[int]] = None) -> str:
     """Extract plain text from page ranges of a PDF document (e.g. pages=[1, 2, 5])."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     if not os.path.exists(full_path):
         return f"[ERROR] File not found: {file_path}"
     
@@ -184,7 +194,9 @@ def parse_pdf_document(file_path: str, pages: Optional[List[int]] = None) -> str
 @tool
 def parse_excel_sheet(file_path: str, sheet_name: str) -> str:
     """Extract cell values from a specific Excel workbook sheet as formatted CSV lines."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     if not os.path.exists(full_path):
         return f"[ERROR] File not found: {file_path}"
     
@@ -213,7 +225,9 @@ def parse_excel_sheet(file_path: str, sheet_name: str) -> str:
 @tool
 def query_csv_table(file_path: str, filter_column: Optional[str] = None, filter_value: Optional[str] = None) -> str:
     """Read standard CSV file tables using pandas and execute column filter lookups."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     if not os.path.exists(full_path):
         return f"[ERROR] File not found: {file_path}"
     
@@ -239,7 +253,9 @@ def query_csv_table(file_path: str, filter_column: Optional[str] = None, filter_
 @tool
 def extract_docx_paragraphs(file_path: str) -> str:
     """Read DOCX paragraphs recursively and return standard clean text representations."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     if not os.path.exists(full_path):
         return f"[ERROR] File not found: {file_path}"
     
@@ -254,7 +270,9 @@ def extract_docx_paragraphs(file_path: str) -> str:
 @tool
 def search_document(file_path: str, query: str) -> str:
     """Search for specific compliance, metrics, or keywords inside workspace documents."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     if not os.path.exists(full_path):
         return f"[ERROR] File not found: {file_path}"
         
@@ -306,7 +324,9 @@ def search_document(file_path: str, query: str) -> str:
 @tool
 def write_workspace_file(file_path: str, content: str) -> str:
     """Write or overwrite data reports in the workspace. Path must be relative (e.g. 'app/document_report.txt')."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     try:
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "w", encoding="utf-8") as f:
