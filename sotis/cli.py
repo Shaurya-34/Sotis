@@ -1,7 +1,7 @@
 """
 sotis.cli
 =========
-Command-line entry point for Sotis.
+Command-line entry point for Sotis — watches your LLM agent and catches it before it spirals.
 
 Commands
 --------
@@ -69,7 +69,7 @@ def _run_demo() -> None:
 
 def _print_help() -> None:
     print(
-        "Sotis — Active Runtime Stabilizer for LLM Agents\n"
+        "Sotis — watches your LLM agent and catches it before it spirals.\n"
         "\n"
         "Usage:\n"
         "  sotis dashboard    Launch the Streamlit observability dashboard\n"
