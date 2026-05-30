@@ -1,496 +1,480 @@
 """
 sotis.obs.app
 =============
-Premium, highly-visual Streamlit dashboard for real-time and post-hoc Sotis telemetry monitoring.
-Supports both structured JSON session logs and raw Track 2 stress test audit logs.
+Sotis Resilience Dashboard — live telemetry viewer for LLM agent sessions.
+Supports structured JSON telemetry (live + static) and raw Track 2 audit logs.
 """
 
 from __future__ import annotations
 
+import collections
 import glob
 import html
 import json
 import math
 import os
 import re
-import collections
+import time
 from typing import List
+
+import altair as alt
+import pandas as pd
 import streamlit as st
 
-# Configure premium dashboard layout
+# ─── Page config (must be first Streamlit call) ───────────────────────────────
 st.set_page_config(
-    page_title="Sotis Resilience Dashboard",
+    page_title="Sotis Dashboard",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Load Harmony Fonts and Glassmorphism Stylesheet
-st.markdown(
-    """
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
-    <style>
-    /* Global Typography & Font Styling */
-    html, body, [class*="css"] {
-        font-family: 'Outfit', sans-serif;
-    }
-    code, pre, [class*="stCode"] {
-        font-family: 'JetBrains Mono', monospace !important;
-    }
-    
-    /* Main Premium Header Styling */
-    .main-header {
-        font-size: 3rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0.2rem;
-        letter-spacing: -0.05rem;
-    }
-    
-    /* Subtitle Styling */
-    .subtitle {
-        font-size: 1.1rem;
-        color: #94A3B8;
-        margin-bottom: 1.5rem;
-        font-weight: 400;
-    }
-    
-    /* Glassmorphism Metric Cards */
-    .metric-card {
-        background: rgba(30, 41, 59, 0.45);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        padding: 1.5rem;
-        border-radius: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
-        transition: transform 0.2s ease, border-color 0.2s ease;
-    }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        border-color: rgba(0, 242, 254, 0.3);
-    }
-    .metric-title {
-        font-size: 0.9rem;
-        color: #94A3B8;
-        text-transform: uppercase;
-        font-weight: 600;
-        letter-spacing: 0.05rem;
-        margin-bottom: 0.5rem;
-    }
-    .metric-value {
-        font-size: 2.2rem;
-        font-weight: 800;
-        margin: 0;
-    }
-    
-    /* Custom status badges */
-    .badge {
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-weight: 600;
-        font-size: 0.85rem;
-    }
-    .badge-running { background-color: rgba(59, 130, 246, 0.15); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.3); }
-    .badge-meltdown { background-color: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
-    .badge-completed { background-color: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
-    .badge-failed { background-color: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-    
-    /* Timeline styling */
-    .timeline-item {
-        border-left: 2px solid rgba(255, 255, 255, 0.1);
-        padding-left: 1.5rem;
-        margin-left: 0.5rem;
-        padding-bottom: 1.5rem;
-        position: relative;
-    }
-    .timeline-dot {
-        position: absolute;
-        left: -6px;
-        top: 4px;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background-color: #4FACFE;
-        border: 2px solid #0F172A;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# ─── CSS ──────────────────────────────────────────────────────────────────────
+st.markdown("""
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+html, body, [class*="css"] { font-family: 'Outfit', sans-serif; }
+code, pre, .stCode        { font-family: 'JetBrains Mono', monospace !important; }
 
-st.sidebar.markdown(
-    "<div style='text-align: center; padding: 1rem 0;'><h2 style='margin:0; font-weight:800; background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>🛡️ Sotis Controller</h2><span style='color: #64748B; font-size: 0.85rem;'>Agent Resilience System</span></div>",
-    unsafe_allow_html=True
-)
-st.sidebar.markdown("---")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# DATA LOADERS & PARSERS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def scan_text_logs() -> list[str]:
-    """Find recursively all run_*.txt files inside ExperimentLog/."""
-    files = glob.glob(os.path.join("ExperimentLog", "**", "run_*.txt"), recursive=True)
-    return sorted(files)
-
-def parse_txt_stress_log(file_path: str) -> dict:
-    """Parses Track 2 stdout/stderr files and distills sequence steps."""
-    steps = []
-    meltdown_events = []
-    recovery_events = []
-    
-    current_node = "INIT"
-    current_tool = None
-    current_tool_args = {}
-    current_tool_result = []
-    collecting_result = False
-    lines: List[str] = []
-    
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
-            
-        for line in lines:
-            line_str = line.strip()
-            
-            # Identify Nodes
-            node_match = re.match(r"^--- \[Node:\s*([^\]]+)\] ---", line_str)
-            if node_match:
-                # Flush previous step if any tool was called
-                if current_tool:
-                    steps.append({
-                        "step_index": len(steps) + 1,
-                        "node": current_node,
-                        "tool_name": current_tool,
-                        "tool_args": current_tool_args,
-                        "result_summary": "\n".join(current_tool_result).strip(),
-                    })
-                    current_tool = None
-                    current_tool_args = {}
-                    current_tool_result = []
-                
-                current_node = node_match.group(1)
-                collecting_result = False
-                continue
-            
-            # Parse Assistant calls
-            call_match = re.match(r"^Assistant calls:\s*([a-zA-Z0-9_]+)\((.*)\)", line_str)
-            if call_match:
-                current_tool = call_match.group(1)
-                args_raw = call_match.group(2)
-                try:
-                    # Clean up single quotes to parse as JSON
-                    args_json = args_raw.replace("'", '"')
-                    current_tool_args = json.loads(args_json)
-                except Exception:
-                    current_tool_args = {"raw": args_raw}
-                collecting_result = False
-                continue
-                
-            # Parse Tool results
-            if line_str.startswith("Tool Result:"):
-                collecting_result = True
-                res_content = line_str[len("Tool Result:"):].strip()
-                if res_content:
-                    current_tool_result.append(res_content)
-                continue
-                
-            if collecting_result:
-                if line_str.startswith("---") or "Meltdown" in line_str:
-                    collecting_result = False
-                else:
-                    current_tool_result.append(line_str)
-            
-            # Detect Meltdown events
-            if "Meltdown intercepted" in line or "[Sotis] Meltdown intercepted!" in line:
-                reason = "TOOL_LOOP" if "TOOL_LOOP" in line else "ENTROPY_PEAK"
-                if "density" in line.lower():
-                    reason = "EDIT_DENSITY"
-                meltdown_events.append({
-                    "triggered_at_step": len(steps) + 1,
-                    "reason": reason,
-                    "msg": line_str
-                })
-                
-            # Detect rollback / recovery notices
-            if "rolling back modified files" in line.lower() or "Rolling back modified files" in line:
-                recovery_events.append({
-                    "step": len(steps) + 1,
-                    "msg": line_str
-                })
-                
-        # Flush final step
-        if current_tool:
-            steps.append({
-                "step_index": len(steps) + 1,
-                "node": current_node,
-                "tool_name": current_tool,
-                "tool_args": current_tool_args,
-                "result_summary": "\n".join(current_tool_result).strip(),
-            })
-    except Exception as e:
-        st.sidebar.error(f"Error parsing log file: {e}")
-        
-    return {
-        "steps": steps,
-        "meltdowns": meltdown_events,
-        "recoveries": recovery_events,
-        "status": "COMPLETED" if "finished in" in "".join(lines) else "INTERRUPTED",
-        "total_resets": len(meltdown_events)
-    }
-
-# ─────────────────────────────────────────────────────────────────────────────
-# VIEW CONTROLLER SELECTOR
-# ─────────────────────────────────────────────────────────────────────────────
-
-log_mode = st.sidebar.radio(
-    "Data Source Mode",
-    options=["Structured JSON Telemetry", "Raw Track 2 Audit Logs"],
-    index=0
-)
-
-steps = []
-meltdowns = []
-state_snapshots = []
-intercepts = []
-recoveries = []
-status = "RUNNING"
-total_resets = 0
-last_snapshot = None
-
-if log_mode == "Structured JSON Telemetry":
-    log_dir = "logs"
-    log_files = sorted(glob.glob(os.path.join(log_dir, "session_*.json")), reverse=True)
-    
-    if not log_files:
-        st.title("🛡️ Sotis Resilience Dashboard")
-        st.warning("No structured JSON session files found under `logs/` directory.")
-        st.info("💡 Run the benchmark to generate telemetry logs: `python -m sotis.bench.runner`")
-        st.stop()
-        
-    selected_log_path = st.sidebar.selectbox(
-        "Select Telemetry File",
-        options=log_files,
-        format_func=lambda x: os.path.basename(x)
-    )
-    
-    with open(selected_log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-                event_type = record.get("event_type")
-                data = record.get("data", {})
-                if event_type == "step":
-                    steps.append(data)
-                elif event_type == "meltdown":
-                    meltdowns.append(data)
-                elif event_type == "state":
-                    state_snapshots.append(data)
-                elif event_type == "meltdown_intercepted":
-                    intercepts.append(data)
-            except Exception:
-                pass
-                
-    last_snapshot = state_snapshots[-1] if state_snapshots else None
-    status = last_snapshot.get("status", "UNKNOWN") if last_snapshot else "RUNNING"
-    total_resets = last_snapshot.get("total_resets", 0) if last_snapshot else len(meltdowns)
-    step_count = last_snapshot.get("step_count", len(steps)) if last_snapshot else len(steps)
-
-else: # Raw Track 2 Audit Logs
-    txt_files = scan_text_logs()
-    
-    if not txt_files:
-        st.title("🛡️ Sotis Resilience Dashboard")
-        st.warning("No Track 2 run_*.txt files found inside the `ExperimentLog/` directory hierarchy.")
-        st.stop()
-        
-    selected_log_path = st.sidebar.selectbox(
-        "Select Audit Log File",
-        options=txt_files,
-        format_func=lambda x: os.path.join(os.path.basename(os.path.dirname(x)), os.path.basename(x))
-    )
-    
-    parsed = parse_txt_stress_log(selected_log_path)
-    steps = parsed["steps"]
-    meltdowns = parsed["meltdowns"]
-    recoveries = parsed["recoveries"]
-    status = parsed["status"]
-    total_resets = parsed["total_resets"]
-    step_count = len(steps)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# RENDERING HERO AREA
-# ─────────────────────────────────────────────────────────────────────────────
-
-st.markdown("<div class='main-header'>Sotis Resilience Dashboard</div>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>Real-Time Telemetry, Edit Density Loops & Graceful Degradation Diagnostics (arXiv:2603.29231v1)</div>", unsafe_allow_html=True)
-
-# Calculate live GDS Score based on resets
-gds_val = 1.0
-if log_mode == "Structured JSON Telemetry" and last_snapshot and last_snapshot.get("subtasks"):
-    subtasks_list = last_snapshot["subtasks"]
-    gds_val = 0.0
-    for s_item in subtasks_list:
-        if s_item["status"] == "DONE":
-            mult = max(0.0, 1.0 - (s_item.get("resets_used", 0) * 0.2))
-            gds_val += s_item["gds_weight"] * mult
-else:
-    # 0.2 penalty per reset to GDS
-    gds_val = max(0.0, 1.0 - (total_resets * 0.2))
-
-# Status Badge Color Setup
-badge_css = {
-    "RUNNING": "badge-running",
-    "MELTDOWN": "badge-meltdown",
-    "COMPLETED": "badge-completed",
-    "HARD_FAILED": "badge-failed",
-    "INTERRUPTED": "badge-failed"
+.metric-card {
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    padding: 1.2rem 1.4rem;
+    transition: border-color .2s ease;
 }
-badge_class = badge_css.get(status, "badge-running")
+.metric-card:hover { border-color: rgba(0,242,254,0.3); }
+.metric-label {
+    font-size: .72rem; font-weight: 700; letter-spacing: .09rem;
+    text-transform: uppercase; color: #475569; margin-bottom: .45rem;
+}
+.metric-value { font-size: 2rem; font-weight: 800; line-height: 1.1; margin: 0; }
 
-# Render 4 Premium Grid Cards
-col1, col2, col3, col4 = st.columns(4)
-with col1:
+.badge {
+    display: inline-block; padding: .22rem .85rem; border-radius: 999px;
+    font-size: .78rem; font-weight: 700; letter-spacing: .05rem;
+}
+.badge-RUNNING     { background:rgba(59,130,246,.12); color:#60A5FA; border:1px solid rgba(59,130,246,.3); }
+.badge-MELTDOWN    { background:rgba(245,158,11,.12);  color:#FBBF24; border:1px solid rgba(245,158,11,.3); }
+.badge-COMPLETED   { background:rgba(16,185,129,.12);  color:#34D399; border:1px solid rgba(16,185,129,.3); }
+.badge-RESUMED     { background:rgba(139,92,246,.12);  color:#A78BFA; border:1px solid rgba(139,92,246,.3); }
+.badge-HARD_FAILED { background:rgba(239,68,68,.12);   color:#F87171; border:1px solid rgba(239,68,68,.3); }
+.badge-INTERRUPTED { background:rgba(239,68,68,.12);   color:#F87171; border:1px solid rgba(239,68,68,.3); }
+.badge-UNKNOWN     { background:rgba(100,116,139,.12); color:#94A3B8; border:1px solid rgba(100,116,139,.3); }
+
+.live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: #34D399; margin-right: 5px; vertical-align: middle;
+    animation: pulse-dot 1.4s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:.3; transform:scale(.7); }
+}
+
+.meltdown-item {
+    background: rgba(239,68,68,.07);
+    border: 1px solid rgba(239,68,68,.18);
+    border-radius: 8px; padding: .7rem 1rem; margin-bottom: .45rem;
+}
+.meltdown-step   { font-size: .78rem; color: #F87171; font-weight: 700; }
+.meltdown-reason { font-size: .78rem; color: #64748B; margin-top: .15rem; }
+
+.subtask-row {
+    padding: .55rem .8rem;
+    border-radius: 0 8px 8px 0;
+    margin-bottom: .45rem;
+    background: rgba(15,23,42,.45);
+}
+.subtask-title  { font-size: .84rem; font-weight: 600; }
+.subtask-detail { font-size: .73rem; color: #475569; margin-top: .18rem; }
+</style>
+""", unsafe_allow_html=True)
+
+# ─── Session state ────────────────────────────────────────────────────────────
+for _k, _v in [
+    ("live_file_pos",   0),
+    ("live_steps",      []),
+    ("live_meltdowns",  []),
+    ("live_snapshots",  []),
+    ("live_last_file",  ""),
+]:
+    if _k not in st.session_state:
+        st.session_state[_k] = _v
+
+# ─── Sidebar ──────────────────────────────────────────────────────────────────
+with st.sidebar:
     st.markdown(
-        f"""
-        <div class='metric-card'>
-            <div class='metric-title'>Execution Status</div>
-            <div style='margin-top: 0.5rem;'><span class='badge {badge_class}'>{html.escape(str(status))}</span></div>
-        </div>
-        """,
-        unsafe_allow_html=True
+        "<div style='padding:.4rem 0 1rem'>"
+        "<span style='font-size:1.45rem;font-weight:800;"
+        "background:linear-gradient(135deg,#00F2FE,#4FACFE);"
+        "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>🛡️ Sotis</span>"
+        "<br><span style='color:#334155;font-size:.78rem'>Agent Resilience Dashboard</span>"
+        "</div>",
+        unsafe_allow_html=True,
     )
-with col2:
-    st.markdown(
-        f"""
-        <div class='metric-card'>
-            <div class='metric-title'>Total Restarts</div>
-            <div class='metric-value' style='color: #FBBF24;'>{total_resets}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.divider()
+
+    log_mode = st.radio(
+        "Source",
+        ["JSON Telemetry", "Audit Logs (Track 2)"],
+        label_visibility="collapsed",
     )
-with col3:
-    st.markdown(
-        f"""
-        <div class='metric-card'>
-            <div class='metric-title'>Telemetry Steps</div>
-            <div class='metric-value' style='color: #60A5FA;'>{step_count}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
+    st.divider()
+
+    live_mode = st.toggle(
+        "🔴  Live Mode",
+        value=False,
+        help="Auto-refreshes every 2 seconds. Run your agent in another terminal and watch events stream in.",
     )
-with col4:
-    color_gds = "#34D399" if gds_val > 0.7 else "#FBBF24" if gds_val > 0.4 else "#F87171"
-    st.markdown(
-        f"""
-        <div class='metric-card'>
-            <div class='metric-title'>Graceful Degradation (GDS)</div>
-            <div class='metric-value' style='color: {color_gds};'>{gds_val:.4f}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
+    if live_mode:
+        st.caption("Polling for new events every 2s…")
+
+# ─── Helpers: data loading ────────────────────────────────────────────────────
+
+def _scan_txt_logs() -> List[str]:
+    return sorted(glob.glob(
+        os.path.join("ExperimentLog", "**", "run_*.txt"), recursive=True
+    ))
+
+
+def _parse_txt_log(file_path: str) -> dict:
+    steps, meltdowns, recoveries = [], [], []
+    node, tool, tool_args = "INIT", None, {}
+    tool_result: List[str] = []
+    collecting = False
+    lines: List[str] = []
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
+            lines = fh.readlines()
+        for line in lines:
+            s = line.strip()
+            m = re.match(r"^--- \[Node:\s*([^\]]+)\] ---", s)
+            if m:
+                if tool:
+                    steps.append({"step_index": len(steps)+1, "node": node,
+                                  "tool_name": tool, "tool_args": tool_args,
+                                  "result_summary": "\n".join(tool_result).strip()})
+                    tool, tool_args, tool_result = None, {}, []
+                node = m.group(1); collecting = False; continue
+            cm = re.match(r"^Assistant calls:\s*([a-zA-Z0-9_]+)\((.*)\)", s)
+            if cm:
+                tool = cm.group(1)
+                try:
+                    tool_args = json.loads(cm.group(2).replace("'", '"'))
+                except Exception:
+                    tool_args = {"raw": cm.group(2)}
+                collecting = False; continue
+            if s.startswith("Tool Result:"):
+                collecting = True
+                if s[len("Tool Result:"):].strip():
+                    tool_result.append(s[len("Tool Result:"):].strip())
+                continue
+            if collecting:
+                if s.startswith("---") or "Meltdown" in s:
+                    collecting = False
+                else:
+                    tool_result.append(s)
+            if "Meltdown intercepted" in line or "[Sotis] Meltdown intercepted!" in line:
+                reason = ("EDIT_DENSITY" if "density" in line.lower()
+                          else "TOOL_LOOP" if "TOOL_LOOP" in line else "ENTROPY_PEAK")
+                meltdowns.append({"triggered_at_step": len(steps)+1, "reason": reason, "msg": s})
+            if "rolling back modified files" in line.lower():
+                recoveries.append({"step": len(steps)+1, "msg": s})
+        if tool:
+            steps.append({"step_index": len(steps)+1, "node": node,
+                          "tool_name": tool, "tool_args": tool_args,
+                          "result_summary": "\n".join(tool_result).strip()})
+    except Exception as e:
+        st.sidebar.error(f"Parse error: {e}")
+    joined = "".join(lines)
+    return {
+        "steps": steps, "meltdowns": meltdowns, "recoveries": recoveries,
+        "status": "COMPLETED" if "finished in" in joined else "INTERRUPTED",
+        "total_resets": len(meltdowns),
+    }
+
+
+def _read_json_lines(fh) -> tuple[List, List, List]:
+    steps, meltdowns, snapshots = [], [], []
+    for line in fh:
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+            et, d = rec.get("event_type"), rec.get("data", {})
+            if et == "step":     steps.append(d)
+            elif et == "meltdown": meltdowns.append(d)
+            elif et == "state":    snapshots.append(d)
+        except Exception:
+            pass
+    return steps, meltdowns, snapshots
+
+
+def _load_json_full(path: str):
+    with open(path, "r", encoding="utf-8") as fh:
+        return _read_json_lines(fh)
+
+
+def _load_json_incremental(path: str):
+    with open(path, "r", encoding="utf-8") as fh:
+        fh.seek(st.session_state.live_file_pos)
+        ns, nm, nsn = _read_json_lines(fh)
+        return ns, nm, nsn, fh.tell()
+
+
+# ─── Load data ────────────────────────────────────────────────────────────────
+
+steps:          List[dict] = []
+meltdowns:      List[dict] = []
+state_snapshots:List[dict] = []
+recoveries:     List[dict] = []
+status       = "RUNNING"
+total_resets = 0
+step_count   = 0
+last_snapshot = None
+selected_log_path = ""
+
+if log_mode == "JSON Telemetry":
+    log_files = sorted(
+        glob.glob(os.path.join("logs", "session_*.json")), reverse=True
     )
+    if not log_files:
+        st.title("🛡️ Sotis Dashboard")
+        st.warning("No session JSON files found in `logs/`.")
+        st.info("Run `sotis benchmark` to generate telemetry, or start an agent with `SotisLangGraphGuard`.")
+        st.stop()
+
+    selected_log_path = st.sidebar.selectbox(
+        "Session", log_files, format_func=os.path.basename
+    )
+
+    if st.session_state.live_last_file != selected_log_path:
+        st.session_state.live_file_pos  = 0
+        st.session_state.live_steps     = []
+        st.session_state.live_meltdowns = []
+        st.session_state.live_snapshots = []
+        st.session_state.live_last_file = selected_log_path
+
+    if live_mode:
+        ns, nm, nsn, new_pos = _load_json_incremental(selected_log_path)
+        st.session_state.live_steps.extend(ns)
+        st.session_state.live_meltdowns.extend(nm)
+        st.session_state.live_snapshots.extend(nsn)
+        st.session_state.live_file_pos = new_pos
+        steps           = st.session_state.live_steps
+        meltdowns       = st.session_state.live_meltdowns
+        state_snapshots = st.session_state.live_snapshots
+    else:
+        steps, meltdowns, state_snapshots = _load_json_full(selected_log_path)
+
+    last_snapshot = state_snapshots[-1] if state_snapshots else None
+    status        = last_snapshot.get("status", "RUNNING") if last_snapshot else "RUNNING"
+    total_resets  = last_snapshot.get("total_resets", 0)   if last_snapshot else len(meltdowns)
+    step_count    = last_snapshot.get("step_count", len(steps)) if last_snapshot else len(steps)
+
+else:
+    txt_files = _scan_txt_logs()
+    if not txt_files:
+        st.title("🛡️ Sotis Dashboard")
+        st.warning("No `run_*.txt` audit logs found in `ExperimentLog/`.")
+        st.stop()
+    selected_log_path = st.sidebar.selectbox(
+        "Audit log", txt_files,
+        format_func=lambda x: f"{os.path.basename(os.path.dirname(x))}/{os.path.basename(x)}",
+    )
+    parsed       = _parse_txt_log(selected_log_path)
+    steps        = parsed["steps"]
+    meltdowns    = parsed["meltdowns"]
+    recoveries   = parsed["recoveries"]
+    status       = parsed["status"]
+    total_resets = parsed["total_resets"]
+    step_count   = len(steps)
+
+# ─── GDS ──────────────────────────────────────────────────────────────────────
+if last_snapshot and last_snapshot.get("subtasks"):
+    gds_val = sum(
+        s["gds_weight"] * max(0.0, 1.0 - s.get("resets_used", 0) * 0.2)
+        for s in last_snapshot["subtasks"] if s["status"] == "DONE"
+    )
+else:
+    gds_val = max(0.0, 1.0 - total_resets * 0.2)
+
+# ─── HEADER ───────────────────────────────────────────────────────────────────
+live_pip = "<span class='live-dot'></span>LIVE &nbsp;" if live_mode else ""
+st.markdown(
+    f"<div style='display:flex;align-items:baseline;gap:.9rem;margin-bottom:.1rem'>"
+    f"<span style='font-size:1.75rem;font-weight:800;"
+    f"background:linear-gradient(135deg,#00F2FE,#4FACFE);"
+    f"-webkit-background-clip:text;-webkit-text-fill-color:transparent'>"
+    f"Sotis Resilience Dashboard</span>"
+    f"<span style='font-size:.82rem;color:#34D399;font-weight:700'>{live_pip}</span>"
+    f"</div>"
+    f"<div style='color:#334155;font-size:.8rem;margin-bottom:1.2rem'>"
+    f"arXiv:2603.29231 &nbsp;·&nbsp; {html.escape(os.path.basename(selected_log_path))}"
+    f"</div>",
+    unsafe_allow_html=True,
+)
+
+# ─── METRIC ROW ───────────────────────────────────────────────────────────────
+badge_key    = status if status in ("RUNNING","MELTDOWN","COMPLETED","RESUMED","HARD_FAILED","INTERRUPTED") else "UNKNOWN"
+color_resets = "#34D399" if total_resets == 0 else "#FBBF24" if total_resets == 1 else "#F87171"
+color_gds    = "#34D399" if gds_val > 0.7  else "#FBBF24" if gds_val > 0.4  else "#F87171"
+
+mc1, mc2, mc3, mc4 = st.columns(4)
+with mc1:
+    st.markdown(f"""<div class='metric-card'>
+        <div class='metric-label'>Status</div>
+        <div style='margin-top:.35rem'><span class='badge badge-{badge_key}'>{html.escape(status)}</span></div>
+    </div>""", unsafe_allow_html=True)
+with mc2:
+    st.markdown(f"""<div class='metric-card'>
+        <div class='metric-label'>Steps</div>
+        <div class='metric-value' style='color:#60A5FA'>{step_count}</div>
+    </div>""", unsafe_allow_html=True)
+with mc3:
+    st.markdown(f"""<div class='metric-card'>
+        <div class='metric-label'>Resets</div>
+        <div class='metric-value' style='color:{color_resets}'>{total_resets}</div>
+    </div>""", unsafe_allow_html=True)
+with mc4:
+    st.markdown(f"""<div class='metric-card'>
+        <div class='metric-label'>GDS Score</div>
+        <div class='metric-value' style='color:{color_gds}'>{gds_val:.3f}</div>
+    </div>""", unsafe_allow_html=True)
 
 st.write("")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DYNAMIC PLOT AND CHECKSUMS
-# ─────────────────────────────────────────────────────────────────────────────
+# ─── ENTROPY CHART — full width ───────────────────────────────────────────────
+st.markdown("#### Entropy H(t) — Tool Sequence Diversity")
 
-left_col, right_col = st.columns([3, 2])
+if steps:
+    meltdown_steps = {m.get("triggered_at_step", -1) for m in meltdowns}
+    entropy_rows   = []
+    window: List[str] = []
 
-with left_col:
-    # 1. Trajectory Shannon Entropy Plot
-    st.subheader("📊 Tool Sequence Entropy Curve H(t)")
-    
-    entropy_history = []
-    rolling_window = []
-    
     for idx, step_item in enumerate(steps):
-        rolling_window.append(step_item["tool_name"])
-        if len(rolling_window) > 5:
-            rolling_window.pop(0)
-            
-        # Shannon Entropy Math
-        counts = collections.Counter(rolling_window)
-        total_items = len(rolling_window)
-        entropy = 0.0
-        for item_count in counts.values():
-            p = item_count / total_items
-            entropy -= p * math.log2(p)
-        entropy_history.append({"Step": idx + 1, "Entropy H(t)": round(entropy, 4)})
-        
-    if entropy_history:
-        st.line_chart(entropy_history, x="Step", y="Entropy H(t)", height=300)
-    else:
-        st.info("No tool trajectory telemetry sequence available.")
-        
-    # 2. Checkpoint Files / Rollbacks
-    st.subheader("🛡️ Resumption & Integrity Checks")
-    if log_mode == "Structured JSON Telemetry" and last_snapshot and last_snapshot.get("subtasks"):
-        st.markdown("**Subtasks Decomposition Graph & GDS Checklist**")
-        subtasks_list = last_snapshot["subtasks"]
-        
-        table_lines = [
-            "| Subtask ID | Description | Status | Steps | Resets | Weight |",
-            "| :--- | :--- | :--- | :---: | :---: | :---: |"
-        ]
-        status_icons = {"DONE": "✅ DONE", "ACTIVE": "⚡ ACTIVE", "FAILED": "❌ FAILED", "PENDING": "⏳ PENDING"}
-        for s_item in subtasks_list:
-            st_id = s_item["subtask_id"]
-            desc = s_item["description"]
-            st_status = status_icons.get(s_item["status"], s_item["status"])
-            steps_consumed = s_item.get("completed_steps", 0)
-            res_used = s_item.get("resets_used", 0)
-            w_percentage = f"{s_item['gds_weight'] * 100:.0f}%"
-            table_lines.append(f"| `{st_id}` | {desc} | **{st_status}** | {steps_consumed} | {res_used} | {w_percentage} |")
-        st.markdown("\n".join(table_lines))
-    else:
-        # For raw logs, we parse and render the rollbacks explicitly
-        if recoveries:
-            st.success(f"**Discovered {len(recoveries)} Checkpoint Rollbacks**")
-            for rec in recoveries:
-                st.markdown(f"🔹 **Step {rec['step']}**: `{rec['msg']}`")
-        else:
-            st.info("No workspace checkpoint rollbacks were parsed for this run.")
+        window.append(step_item["tool_name"])
+        if len(window) > 5:
+            window.pop(0)
+        counts = collections.Counter(window)
+        total  = len(window)
+        h = -sum((c / total) * math.log2(c / total) for c in counts.values())
+        entropy_rows.append({
+            "Step":     idx + 1,
+            "H(t)":     round(h, 4),
+            "Meltdown": (idx + 1) in meltdown_steps,
+        })
 
-with right_col:
-    # 3. Interception Log
-    st.subheader("🚨 Meltdown Interceptions Log")
+    df_e   = pd.DataFrame(entropy_rows)
+    x_axis = alt.X("Step:Q", axis=alt.Axis(grid=False, labelColor="#475569", titleColor="#475569", domainColor="#1E293B", tickColor="#1E293B"))
+    y_axis = alt.Y("H(t):Q", scale=alt.Scale(domain=[0, 3.2]),
+                   axis=alt.Axis(labelColor="#475569", titleColor="#475569", domainColor="#1E293B", tickColor="#1E293B"))
+
+    area  = alt.Chart(df_e).mark_area(color="#4FACFE", opacity=0.07).encode(x=x_axis, y=y_axis)
+    line  = alt.Chart(df_e).mark_line(color="#4FACFE", strokeWidth=2.5).encode(x=x_axis, y=y_axis)
+    thres = alt.Chart(pd.DataFrame({"y": [1.5]})).mark_rule(
+        color="#F87171", strokeDash=[5, 4], strokeWidth=1.5
+    ).encode(y="y:Q")
+    dots  = alt.Chart(df_e).mark_point(size=110, filled=True, color="#F59E0B").encode(
+        x=x_axis, y=y_axis,
+        opacity=alt.condition(alt.datum["Meltdown"], alt.value(1), alt.value(0)),
+        tooltip=[alt.Tooltip("Step:Q"), alt.Tooltip("H(t):Q", format=".3f")],
+    )
+
+    chart = (
+        (area + line + thres + dots)
+        .properties(height=250)
+        .configure_view(strokeWidth=0, fill="transparent")
+        .configure(background="transparent")
+    )
+    st.altair_chart(chart, use_container_width=True)
+    st.caption("Red dashed line = meltdown threshold H = 1.5 bits  ·  Orange dots = intercepted meltdowns")
+else:
+    st.info("No trajectory data yet. Start an agent session or load a session file.")
+
+st.write("")
+
+# ─── MIDDLE ROW: Subtask DAG | Meltdown Feed ──────────────────────────────────
+dag_col, feed_col = st.columns(2)
+
+with dag_col:
+    st.markdown("#### Subtask Progress")
+    if last_snapshot and last_snapshot.get("subtasks"):
+        _colors = {"DONE": "#34D399", "ACTIVE": "#60A5FA", "PENDING": "#334155", "HARD_FAILED": "#F87171"}
+        _icons  = {"DONE": "✅", "ACTIVE": "⚡", "PENDING": "⏳", "HARD_FAILED": "❌"}
+        for s in last_snapshot["subtasks"]:
+            c = _colors.get(s["status"], "#475569")
+            i = _icons.get(s["status"], "·")
+            st.markdown(
+                f"<div class='subtask-row' style='border-left:3px solid {c}'>"
+                f"<div class='subtask-title' style='color:{c}'>{i} {html.escape(s['description'])}</div>"
+                f"<div class='subtask-detail'>"
+                f"Steps: {s.get('completed_steps',0)} &nbsp;·&nbsp; "
+                f"Resets: {s.get('resets_used',0)} &nbsp;·&nbsp; "
+                f"Weight: {s['gds_weight']*100:.0f}%"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+    elif recoveries:
+        st.success(f"{len(recoveries)} checkpoint rollback(s)")
+        for rec in recoveries:
+            st.markdown(f"🔹 Step {rec['step']}: `{rec['msg']}`")
+    else:
+        st.info("No subtask data for this session.")
+
+with feed_col:
+    st.markdown("#### Meltdown Incidents")
     if meltdowns:
-        for idx, m in enumerate(meltdowns):
-            at_step = m.get("triggered_at_step", "?")
-            reason = m.get("reason", "MELTDOWN")
-            msg = m.get("msg") or m.get("message") or f"Meltdown intercepted! Reason: {reason}"
-            st.error(f"**Step {at_step}**: {msg}")
+        with st.container(height=300):
+            for m in reversed(meltdowns):
+                at   = m.get("triggered_at_step", "?")
+                rsn  = m.get("reason", "MELTDOWN")
+                ev   = m.get("entropy_value", "")
+                lt   = m.get("loop_tool") or ""
+                ev_s = f" · H={ev:.3f}" if isinstance(ev, float) else ""
+                detail = f"{lt}{ev_s}".strip(" ·")
+                st.markdown(
+                    f"<div class='meltdown-item'>"
+                    f"<div class='meltdown-step'>⚡ Step {at} — {html.escape(rsn)}</div>"
+                    f"<div class='meltdown-reason'>"
+                    f"{html.escape(detail) if detail else 'Meltdown intercepted — context reset and workspace rolled back.'}"
+                    f"</div></div>",
+                    unsafe_allow_html=True,
+                )
     else:
-        st.info("No meltdown incidents were intercepted in this session. Running safely.")
-        
-    # 4. Step Explorer
-    st.subheader("⏱️ Telemetry Sequence Explorer")
+        st.success("No meltdowns detected — agent running cleanly.")
+
+st.write("")
+
+# ─── STEP EXPLORER — bottom ───────────────────────────────────────────────────
+with st.expander("🔍  Step Explorer", expanded=False):
     if steps:
-        if len(steps) > 1:
-            step_idx = st.slider("Select Trajectory Step", min_value=1, max_value=len(steps), value=len(steps))
-        else:
-            step_idx = 1
-        active_step = steps[step_idx - 1]
-        
-        st.markdown(f"**Step Index**: `{active_step['step_index']}`")
-        if "node" in active_step:
-            st.markdown(f"**Active Node**: `{active_step['node']}`")
-        st.markdown(f"**Tool Invocations**: `{active_step['tool_name']}`")
-        st.json(active_step["tool_args"])
-        if active_step.get("result_summary"):
-            st.markdown(f"**Tool Output Summary**:")
-            st.code(active_step["result_summary"], language="text")
+        step_idx = st.slider(
+            "Step",
+            min_value=1,
+            max_value=len(steps),
+            value=len(steps),
+            label_visibility="collapsed",
+        )
+        active = steps[step_idx - 1]
+        left, right = st.columns([1, 2])
+        with left:
+            st.markdown(f"**Step** &nbsp; `{active.get('step_index', step_idx)}`")
+            st.markdown(f"**Tool** &nbsp; `{html.escape(active['tool_name'])}`")
+            if "node" in active:
+                st.markdown(f"**Node** &nbsp; `{html.escape(active['node'])}`")
+        with right:
+            st.caption("Arguments")
+            st.json(active.get("tool_args", {}), expanded=True)
+        if active.get("result_summary"):
+            st.caption("Result")
+            st.code(active["result_summary"], language="text")
     else:
-        st.info("No telemetry trajectory steps available.")
+        st.info("No steps to explore yet.")
+
+# ─── LIVE AUTO-REFRESH (must be last) ────────────────────────────────────────
+if live_mode:
+    time.sleep(2)
+    st.rerun()
