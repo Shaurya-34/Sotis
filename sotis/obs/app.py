@@ -205,9 +205,9 @@ if not log_files:
     st.markdown(
         "<div style='padding:5rem 0;text-align:center'>"
         "<div style='font-size:.65rem;font-weight:800;letter-spacing:.18rem;"
-        "text-transform:uppercase;color:#1E293B;margin-bottom:1.5rem'>No Data</div>"
-        "<div style='font-size:1.1rem;font-weight:700;color:#1E293B'>No session files in logs/</div>"
-        "<div style='font-size:.85rem;color:#0F172A;margin-top:.5rem'>"
+        "text-transform:uppercase;color:#374151;margin-bottom:1.5rem'>No Data</div>"
+        "<div style='font-size:1.1rem;font-weight:700;color:#6B7280'>No session files in logs/</div>"
+        "<div style='font-size:.85rem;color:#4B5563;margin-top:.5rem'>"
         "Run <code>sotis benchmark</code> or connect an agent with SotisLangGraphGuard</div>"
         "</div>",
         unsafe_allow_html=True,
@@ -275,6 +275,22 @@ last_snapshot = state_snapshots[-1] if state_snapshots else None
 status        = last_snapshot.get("status", "RUNNING") if last_snapshot else "RUNNING"
 total_resets  = last_snapshot.get("total_resets", 0)   if last_snapshot else len(meltdowns)
 step_count    = last_snapshot.get("step_count", len(steps)) if last_snapshot else len(steps)
+
+# ─── Stale / no-agent detection ───────────────────────────────────────────────
+file_age_s   = time.time() - os.path.getmtime(selected_path)
+agent_active = file_age_s < 12   # file written to within last 12 seconds
+if live_mode and not agent_active:
+    st.markdown(
+        "<div style='background:#12100A;border-left:3px solid #FEB019;"
+        "padding:.65rem 1.1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.7rem'>"
+        "<span style='color:#FEB019;font-size:.7rem;font-weight:800;letter-spacing:.1rem'>"
+        "⚠ NO ACTIVE AGENT</span>"
+        "<span style='color:#6B7280;font-size:.75rem'>"
+        f"Last event {int(file_age_s)}s ago — start an agent or run "
+        "<code>sotis benchmark</code> to stream live data.</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 # ─── GDS ──────────────────────────────────────────────────────────────────────
 if last_snapshot and last_snapshot.get("subtasks"):
@@ -400,14 +416,14 @@ if steps:
     )
     st.altair_chart(chart, width="stretch")
     st.markdown(
-        "<div style='font-size:.65rem;color:#1E293B;letter-spacing:.04rem;margin-top:-.3rem'>"
+        "<div style='font-size:.65rem;color:#4B5563;letter-spacing:.06rem;margin-top:-.3rem'>"
         "RED DASHED = MELTDOWN THRESHOLD (H = 1.5 bits) &nbsp;·&nbsp; AMBER DOTS = INTERCEPTED MELTDOWNS"
         "</div>",
         unsafe_allow_html=True,
     )
 else:
     st.markdown(
-        "<div style='padding:2rem;text-align:center;color:#1E293B;font-size:.85rem'>"
+        "<div style='padding:2rem;text-align:center;color:#4B5563;font-size:.85rem'>"
         "No trajectory data. Select a session or enable Live Mode.</div>",
         unsafe_allow_html=True,
     )
@@ -443,7 +459,7 @@ with dag_col:
             )
     else:
         st.markdown(
-            "<div style='font-size:.8rem;color:#1E293B;padding:.5rem 0'>"
+            "<div style='font-size:.8rem;color:#4B5563;padding:.5rem 0'>"
             "No subtask decomposition data for this session.</div>",
             unsafe_allow_html=True,
         )
@@ -508,7 +524,7 @@ with st.expander("STEP EXPLORER", expanded=False):
             st.code(active["result_summary"], language="text")
     else:
         st.markdown(
-            "<div style='font-size:.8rem;color:#1E293B;padding:.5rem 0'>No steps yet.</div>",
+            "<div style='font-size:.8rem;color:#4B5563;padding:.5rem 0'>No steps yet.</div>",
             unsafe_allow_html=True,
         )
 
