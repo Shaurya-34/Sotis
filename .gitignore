@@ -45,6 +45,9 @@ MANIFEST
 logs/
 *.log
 
+# Generated benchmark summary (written by `sotis benchmark`)
+BENCH_SUMMARY.txt
+
 # Local scratch directories
 scratch/
 a.txt
