@@ -117,6 +117,50 @@ for step in range(max_steps):
 
 ---
 
+## Claude Code (MCP)
+
+Sotis ships an MCP server so any MCP-capable agent — Claude Code, Claude Desktop —
+can report its tool calls and get live meltdown verdicts, while streaming the same
+telemetry to the dashboard.
+
+**1. Install with the MCP extra:**
+
+```bash
+pip install sotis[mcp]
+```
+
+**2. Register the server** in your project's `.mcp.json` (or Claude Desktop config):
+
+```json
+{
+  "mcpServers": {
+    "sotis": { "command": "sotis", "args": ["mcp"] }
+  }
+}
+```
+
+**3. Tell the agent to use it** — add this to your `CLAUDE.md`:
+
+```
+At the start of a task, call sotis_start_session with the goal.
+After every tool call, call sotis_watch(tool_name, tool_args, result_summary).
+If Sotis reports a meltdown, stop, re-read the task, and change approach.
+```
+
+**4. Watch it live:** run `sotis dashboard`, pick the `mcp` session, and toggle
+Live Mode.
+
+The server exposes four tools:
+
+| Tool | Purpose |
+|------|---------|
+| `sotis_start_session(task_goal)` | Begin a monitoring session |
+| `sotis_watch(tool_name, tool_args, result_summary)` | Report a tool call, get a meltdown verdict |
+| `sotis_status()` | Current status, steps, resets, entropy |
+| `sotis_reset()` | Manually clear the rolling window after a deliberate strategy change |
+
+---
+
 ## Tuning
 
 The default entropy threshold (`1.5 bits`) is calibrated for agents that use 1-2 tools in tight loops. If your agent legitimately uses 3+ different tools in a short window, the default will fire false positives — `log2(3) = 1.585 > 1.5`.
