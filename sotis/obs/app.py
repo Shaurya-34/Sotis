@@ -165,8 +165,6 @@ def _fmt_session_name(path: str) -> str:
             return f"{agent}  ·  {domain}  ·  {horizon}  ·  run {run}"
     if name.startswith("sotis-lg-"):
         return f"live  ·  {name[len('sotis-lg-'):]}"
-    if name.startswith("sotis-mcp-"):
-        return f"mcp  ·  {name[len('sotis-mcp-'):]}"
     return name
 
 

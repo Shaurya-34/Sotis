@@ -118,24 +118,6 @@ for step in range(max_steps):
 
 ---
 
-## Claude Code (MCP)
-
-Sotis ships an MCP server so any MCP-capable agent — Claude Code, Claude Desktop —
-can report its tool calls and get live meltdown verdicts, while streaming the same
-telemetry to the dashboard.
-
-```json
-{
-  "mcpServers": {
-    "sotis": { "command": "sotis", "args": ["mcp"] }
-  }
-}
-```
-
-Full setup, CLI commands, and dashboard guide: **[USAGE.md](USAGE.md)**
-
----
-
 ## Tuning
 
 The default entropy threshold (`1.5 bits`) is calibrated for agents that use 1-2 tools in tight loops. If your agent legitimately uses 3+ different tools in a short window, the default will fire false positives — `log2(3) = 1.585 > 1.5`.
@@ -176,7 +158,6 @@ Sotis intervenes *during* execution. It intercepts spiraling tool calls, rolls b
 | **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (≥60% token savings) |
 | **Graceful Degradation** | GDS scoring preserves partial progress across resets |
 | **LangGraph Integration** | Native guard node — intercepts state, rolls back files |
-| **Claude Code (MCP)** | MCP server — agents report tool calls, get live meltdown verdicts ([USAGE.md](USAGE.md)) |
 | **Document Processing** | PDF, XLSX, Word, CSV support + Jaccard semantic loop detection |
 | **LLM Support** | OpenAI, Anthropic, DeepSeek, Google Gemini |
 | **Observability** | Streamlit dashboard + structured JSON session logs |
