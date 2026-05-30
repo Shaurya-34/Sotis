@@ -460,13 +460,16 @@ st.write("")
 
 with st.expander("🔍  Step Explorer", expanded=False):
     if steps:
-        step_idx = st.slider(
-            "Step",
-            min_value=1,
-            max_value=len(steps),
-            value=len(steps),
-            label_visibility="collapsed",
-        )
+        if len(steps) > 1:
+            step_idx = st.slider(
+                "Step",
+                min_value=1,
+                max_value=len(steps),
+                value=len(steps),
+                label_visibility="collapsed",
+            )
+        else:
+            step_idx = 1
         active = steps[step_idx - 1]
         left, right = st.columns([1, 2])
         with left:
