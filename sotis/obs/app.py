@@ -2,7 +2,6 @@
 sotis.obs.app
 =============
 Sotis Resilience Dashboard — live telemetry viewer for LLM agent sessions.
-Supports structured JSON telemetry (live + static) and raw Track 2 audit logs.
 """
 
 from __future__ import annotations
@@ -13,7 +12,6 @@ import html
 import json
 import math
 import os
-import re
 import time
 from typing import List
 
@@ -21,7 +19,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-# ─── Page config (must be first Streamlit call) ───────────────────────────────
+# ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Sotis Dashboard",
     page_icon="🛡️",
@@ -103,84 +101,25 @@ for _k, _v in [
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ─── Sidebar: data source only ────────────────────────────────────────────────
-with st.sidebar:
-    st.markdown(
-        "<span style='font-size:1.1rem;font-weight:800;"
-        "background:linear-gradient(135deg,#00F2FE,#4FACFE);"
-        "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>"
-        "🛡️ Sotis</span>",
-        unsafe_allow_html=True,
-    )
-    st.divider()
-    log_mode = st.radio(
-        "Data source",
-        ["JSON Telemetry", "Audit Logs (Track 2)"],
-    )
-
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _scan_txt_logs() -> List[str]:
-    return sorted(glob.glob(
-        os.path.join("ExperimentLog", "**", "run_*.txt"), recursive=True
-    ))
-
-
-def _parse_txt_log(file_path: str) -> dict:
-    steps, meltdowns, recoveries = [], [], []
-    node, tool, tool_args = "INIT", None, {}
-    tool_result: List[str] = []
-    collecting = False
-    lines: List[str] = []
-    try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
-            lines = fh.readlines()
-        for line in lines:
-            s = line.strip()
-            m = re.match(r"^--- \[Node:\s*([^\]]+)\] ---", s)
-            if m:
-                if tool:
-                    steps.append({"step_index": len(steps)+1, "node": node,
-                                  "tool_name": tool, "tool_args": tool_args,
-                                  "result_summary": "\n".join(tool_result).strip()})
-                    tool, tool_args, tool_result = None, {}, []
-                node = m.group(1); collecting = False; continue
-            cm = re.match(r"^Assistant calls:\s*([a-zA-Z0-9_]+)\((.*)\)", s)
-            if cm:
-                tool = cm.group(1)
-                try:
-                    tool_args = json.loads(cm.group(2).replace("'", '"'))
-                except Exception:
-                    tool_args = {"raw": cm.group(2)}
-                collecting = False; continue
-            if s.startswith("Tool Result:"):
-                collecting = True
-                if s[len("Tool Result:"):].strip():
-                    tool_result.append(s[len("Tool Result:"):].strip())
-                continue
-            if collecting:
-                if s.startswith("---") or "Meltdown" in s:
-                    collecting = False
-                else:
-                    tool_result.append(s)
-            if "Meltdown intercepted" in line or "[Sotis] Meltdown intercepted!" in line:
-                reason = ("EDIT_DENSITY" if "density" in line.lower()
-                          else "TOOL_LOOP" if "TOOL_LOOP" in line else "ENTROPY_PEAK")
-                meltdowns.append({"triggered_at_step": len(steps)+1, "reason": reason, "msg": s})
-            if "rolling back modified files" in line.lower():
-                recoveries.append({"step": len(steps)+1, "msg": s})
-        if tool:
-            steps.append({"step_index": len(steps)+1, "node": node,
-                          "tool_name": tool, "tool_args": tool_args,
-                          "result_summary": "\n".join(tool_result).strip()})
-    except Exception as e:
-        st.error(f"Parse error: {e}")
-    joined = "".join(lines)
-    return {
-        "steps": steps, "meltdowns": meltdowns, "recoveries": recoveries,
-        "status": "COMPLETED" if "finished in" in joined else "INTERRUPTED",
-        "total_resets": len(meltdowns),
-    }
+def _fmt_session_name(path: str) -> str:
+    """Turn a session filename into a readable label."""
+    name = os.path.basename(path).replace("session_", "").replace(".json", "")
+    # bench sessions: bench-sotis-se-medium-2 → SE · medium · run 2
+    if name.startswith("bench-"):
+        parts = name.split("-")
+        # parts: ['bench', 'sotis'|'base', domain, horizon, run]
+        if len(parts) >= 5:
+            agent   = "Sotis" if parts[1] == "sotis" else "Baseline"
+            domain  = parts[2].upper()
+            horizon = parts[3].replace("_", " ")
+            run     = parts[4]
+            return f"{agent} · {domain} · {horizon} · run {run}"
+    # live sessions: sotis-lg-feb57846 → live · feb57846
+    if name.startswith("sotis-lg-"):
+        return f"live · {name[len('sotis-lg-'):]}"
+    return name
 
 
 def _read_json_lines(fh) -> tuple[List, List, List]:
@@ -199,64 +138,61 @@ def _read_json_lines(fh) -> tuple[List, List, List]:
     return steps, meltdowns, snapshots
 
 
-def _load_json_full(path: str):
+def _load_full(path: str):
     with open(path, "r", encoding="utf-8") as fh:
         return _read_json_lines(fh)
 
 
-def _load_json_incremental(path: str):
+def _load_incremental(path: str):
     with open(path, "r", encoding="utf-8") as fh:
         fh.seek(st.session_state.live_file_pos)
         ns, nm, nsn = _read_json_lines(fh)
         return ns, nm, nsn, fh.tell()
 
 
-# ─── Scan available files (before rendering header) ───────────────────────────
+# ─── Discover sessions ────────────────────────────────────────────────────────
 
-if log_mode == "JSON Telemetry":
-    available_files = sorted(glob.glob(os.path.join("logs", "session_*.json")), reverse=True)
-    fmt_fn = os.path.basename
-else:
-    available_files = _scan_txt_logs()
-    fmt_fn = lambda x: f"{os.path.basename(os.path.dirname(x))}/{os.path.basename(x)}"
+log_files = sorted(glob.glob(os.path.join("logs", "session_*.json")), reverse=True)
 
-if not available_files:
+if not log_files:
     st.markdown(
-        "<div style='padding:3rem 0;text-align:center;color:#475569'>"
+        "<div style='padding:4rem 0;text-align:center;color:#475569'>"
         "<div style='font-size:3rem'>🛡️</div>"
-        "<div style='font-size:1.2rem;font-weight:700;margin:.5rem 0'>No session files found</div>"
-        "<div style='font-size:.9rem'>Run <code>sotis benchmark</code> or start an agent with <code>SotisLangGraphGuard</code></div>"
+        "<div style='font-size:1.2rem;font-weight:700;margin:.6rem 0;color:#64748B'>No sessions found</div>"
+        "<div style='font-size:.9rem'>Run <code>sotis benchmark</code> to generate telemetry,<br>"
+        "or start an agent with <code>SotisLangGraphGuard</code> to stream live events here.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
     st.stop()
 
-# ─── HEADER ROW: branding | session selector | live toggle ────────────────────
+# ─── HEADER ROW ───────────────────────────────────────────────────────────────
 
-brand_col, selector_col, toggle_col = st.columns([2, 5, 2])
+brand_col, selector_col, toggle_col = st.columns([2, 6, 2])
 
 with brand_col:
     st.markdown(
-        "<div style='padding-top:.35rem'>"
+        "<div style='padding-top:.4rem'>"
         "<span style='font-size:1.6rem;font-weight:800;"
         "background:linear-gradient(135deg,#00F2FE,#4FACFE);"
         "-webkit-background-clip:text;-webkit-text-fill-color:transparent'>"
         "🛡️ Sotis</span>"
-        "<div style='font-size:.72rem;color:#334155;margin-top:.1rem'>Resilience Dashboard</div>"
+        "<div style='font-size:.7rem;color:#334155;margin-top:.1rem;letter-spacing:.05rem'>"
+        "RESILIENCE DASHBOARD</div>"
         "</div>",
         unsafe_allow_html=True,
     )
 
 with selector_col:
-    selected_log_path = st.selectbox(
+    selected_path = st.selectbox(
         "session",
-        available_files,
-        format_func=fmt_fn,
+        log_files,
+        format_func=_fmt_session_name,
         label_visibility="collapsed",
     )
 
 with toggle_col:
-    st.write("")   # nudge toggle down to align with selectbox
+    st.write("")
     live_mode = st.toggle(
         "🔴  Live Mode",
         value=False,
@@ -267,48 +203,29 @@ st.divider()
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 
-steps:           List[dict] = []
-meltdowns:       List[dict] = []
-state_snapshots: List[dict] = []
-recoveries:      List[dict] = []
-status        = "RUNNING"
-total_resets  = 0
-step_count    = 0
-last_snapshot = None
+if st.session_state.live_last_file != selected_path:
+    st.session_state.live_file_pos  = 0
+    st.session_state.live_steps     = []
+    st.session_state.live_meltdowns = []
+    st.session_state.live_snapshots = []
+    st.session_state.live_last_file = selected_path
 
-if log_mode == "JSON Telemetry":
-    if st.session_state.live_last_file != selected_log_path:
-        st.session_state.live_file_pos  = 0
-        st.session_state.live_steps     = []
-        st.session_state.live_meltdowns = []
-        st.session_state.live_snapshots = []
-        st.session_state.live_last_file = selected_log_path
-
-    if live_mode:
-        ns, nm, nsn, new_pos = _load_json_incremental(selected_log_path)
-        st.session_state.live_steps.extend(ns)
-        st.session_state.live_meltdowns.extend(nm)
-        st.session_state.live_snapshots.extend(nsn)
-        st.session_state.live_file_pos = new_pos
-        steps           = st.session_state.live_steps
-        meltdowns       = st.session_state.live_meltdowns
-        state_snapshots = st.session_state.live_snapshots
-    else:
-        steps, meltdowns, state_snapshots = _load_json_full(selected_log_path)
-
-    last_snapshot = state_snapshots[-1] if state_snapshots else None
-    status        = last_snapshot.get("status", "RUNNING") if last_snapshot else "RUNNING"
-    total_resets  = last_snapshot.get("total_resets", 0)   if last_snapshot else len(meltdowns)
-    step_count    = last_snapshot.get("step_count", len(steps)) if last_snapshot else len(steps)
-
+if live_mode:
+    ns, nm, nsn, new_pos = _load_incremental(selected_path)
+    st.session_state.live_steps.extend(ns)
+    st.session_state.live_meltdowns.extend(nm)
+    st.session_state.live_snapshots.extend(nsn)
+    st.session_state.live_file_pos = new_pos
+    steps           = st.session_state.live_steps
+    meltdowns       = st.session_state.live_meltdowns
+    state_snapshots = st.session_state.live_snapshots
 else:
-    parsed        = _parse_txt_log(selected_log_path)
-    steps         = parsed["steps"]
-    meltdowns     = parsed["meltdowns"]
-    recoveries    = parsed["recoveries"]
-    status        = parsed["status"]
-    total_resets  = parsed["total_resets"]
-    step_count    = len(steps)
+    steps, meltdowns, state_snapshots = _load_full(selected_path)
+
+last_snapshot = state_snapshots[-1] if state_snapshots else None
+status        = last_snapshot.get("status", "RUNNING") if last_snapshot else "RUNNING"
+total_resets  = last_snapshot.get("total_resets", 0)   if last_snapshot else len(meltdowns)
+step_count    = last_snapshot.get("step_count", len(steps)) if last_snapshot else len(steps)
 
 # ─── GDS ──────────────────────────────────────────────────────────────────────
 if last_snapshot and last_snapshot.get("subtasks"):
@@ -324,12 +241,12 @@ else:
 badge_key    = status if status in ("RUNNING","MELTDOWN","COMPLETED","RESUMED","HARD_FAILED","INTERRUPTED") else "UNKNOWN"
 color_resets = "#34D399" if total_resets == 0 else "#FBBF24" if total_resets == 1 else "#F87171"
 color_gds    = "#34D399" if gds_val > 0.7  else "#FBBF24" if gds_val > 0.4  else "#F87171"
-live_badge   = "<span class='live-dot'></span>" if live_mode else ""
+live_dot     = "<span class='live-dot'></span>" if live_mode else ""
 
 mc1, mc2, mc3, mc4 = st.columns(4)
 with mc1:
     st.markdown(f"""<div class='metric-card'>
-        <div class='metric-label'>Status {live_badge}</div>
+        <div class='metric-label'>Status {live_dot}</div>
         <div style='margin-top:.35rem'><span class='badge badge-{badge_key}'>{html.escape(status)}</span></div>
     </div>""", unsafe_allow_html=True)
 with mc2:
@@ -399,7 +316,7 @@ if steps:
     st.altair_chart(chart, width="stretch")
     st.caption("Red dashed line = meltdown threshold H = 1.5 bits  ·  Orange dots = intercepted meltdowns")
 else:
-    st.info("No trajectory data yet. Start an agent session or select a session file.")
+    st.info("No trajectory data yet. Select a session file or enable Live Mode.")
 
 st.write("")
 
@@ -425,10 +342,6 @@ with dag_col:
                 f"</div></div>",
                 unsafe_allow_html=True,
             )
-    elif recoveries:
-        st.success(f"{len(recoveries)} checkpoint rollback(s)")
-        for rec in recoveries:
-            st.markdown(f"🔹 Step {rec['step']}: `{rec['msg']}`")
     else:
         st.info("No subtask data for this session.")
 
@@ -486,7 +399,7 @@ with st.expander("🔍  Step Explorer", expanded=False):
     else:
         st.info("No steps to explore yet.")
 
-# ─── LIVE AUTO-REFRESH (must be last) ────────────────────────────────────────
+# ─── LIVE AUTO-REFRESH ────────────────────────────────────────────────────────
 if live_mode:
     time.sleep(2)
     st.rerun()
