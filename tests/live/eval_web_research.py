@@ -1,6 +1,6 @@
 """
-tests/run_live_web_research
-===========================
+tests/live/eval_web_research
+============================
 Live real-world Web Research (WR) stress-test agent powered by local Ollama.
 
 This script:
@@ -60,6 +60,14 @@ WORKSPACE_DIR = os.path.abspath(
 )
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
+def _resolve_workspace_path(file_path: str) -> str | None:
+    """Resolve and validate that file_path stays within WORKSPACE_DIR. Returns None on traversal attempt."""
+    full = os.path.realpath(os.path.join(WORKSPACE_DIR, file_path))
+    workspace_root = os.path.realpath(WORKSPACE_DIR)
+    if not (full == workspace_root or full.startswith(workspace_root + os.sep)):
+        return None
+    return full
+
 @tool
 def web_search(query: str) -> str:
     """Search the real live internet for information. Returns titles, snippets, and URLs."""
@@ -111,7 +119,9 @@ def web_scrape(url: str) -> str:
 @tool
 def write_workspace_file(file_path: str, content: str) -> str:
     """Write research findings to the local workspace. Path must be relative (e.g. 'app/superconductor_report.txt')."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     try:
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "w", encoding="utf-8") as f:

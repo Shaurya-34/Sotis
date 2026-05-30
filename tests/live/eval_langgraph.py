@@ -1,6 +1,6 @@
 """
-tests/run_live_langgraph_evaluation
-==================================
+tests/live/eval_langgraph
+=========================
 Dual-mode LangGraph ReAct agent runner and circular import trap stress-test (Track 2).
 
 This script:
@@ -56,13 +56,23 @@ class AgentState(TypedDict):
 
 WORKSPACE_DIR = os.environ.get(
     "WORKSPACE_DIR",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "live_test_workspace"))
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "live_test_workspace"))
 )
+
+def _resolve_workspace_path(file_path: str) -> str | None:
+    """Resolve and validate that file_path stays within WORKSPACE_DIR. Returns None on traversal attempt."""
+    full = os.path.realpath(os.path.join(WORKSPACE_DIR, file_path))
+    workspace_root = os.path.realpath(WORKSPACE_DIR)
+    if not (full == workspace_root or full.startswith(workspace_root + os.sep)):
+        return None
+    return full
 
 @tool
 def read_workspace_file(file_path: str) -> str:
     """Read contents of a file in the workspace. Path must be relative to workspace root (e.g. 'app/math_core.py')."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     try:
         with open(full_path, "r", encoding="utf-8") as f:
             return f.read()
@@ -73,9 +83,10 @@ def read_workspace_file(file_path: str) -> str:
 @tool
 def write_workspace_file(file_path: str, content: str) -> str:
     """Write or overwrite a file in the workspace. Path must be relative to workspace root (e.g. 'app/math_core.py')."""
-    full_path = os.path.join(WORKSPACE_DIR, file_path)
+    full_path = _resolve_workspace_path(file_path)
+    if full_path is None:
+        return "[ERROR] Access denied: path escapes the workspace directory."
     try:
-        # Create directories if missing
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)

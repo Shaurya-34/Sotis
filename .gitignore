@@ -50,6 +50,18 @@ scratch/
 a.txt
 2603.29231v1.pdf
 
+# Coverage HTML report (generated, not source)
+htmlcov/
+
+# ExperimentLog: keep run logs and workspace source, exclude generated artifacts
+ExperimentLog/**/__pycache__/
+ExperimentLog/**/.pytest_cache/
+ExperimentLog/**/workspace/financial/
+ExperimentLog/**/workspace/reports/
+ExperimentLog/**/workspace/app/document_report.txt
+ExperimentLog/**/app/__pycache__/
+ExperimentLog/**/tests/__pycache__/
+
 # Screenshots (keep out of git)
 *.jpeg
 *.jpg

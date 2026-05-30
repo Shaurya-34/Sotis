@@ -387,8 +387,9 @@ class DeepSeekAdapter(OpenAIAdapter):
 
     def __init__(
         self,
-        model  : str           = "deepseek-chat",
-        api_key: Optional[str] = None,
+        model      : str           = "deepseek-chat",
+        api_key    : Optional[str] = None,
+        max_tokens : int           = 4096,
     ) -> None:
         import os  # noqa: PLC0415
         key = api_key or os.environ.get("DEEPSEEK_API_KEY", "")
@@ -403,6 +404,7 @@ class DeepSeekAdapter(OpenAIAdapter):
         )
         self._model       = model
         self._temperature = 0.0
+        self._max_tokens  = max_tokens
 
     @property
     def provider_name(self) -> str:

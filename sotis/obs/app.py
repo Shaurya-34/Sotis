@@ -8,11 +8,13 @@ Supports both structured JSON session logs and raw Track 2 stress test audit log
 from __future__ import annotations
 
 import glob
+import html
 import json
+import math
 import os
 import re
-import math
 import collections
+from typing import List
 import streamlit as st
 
 # Configure premium dashboard layout
@@ -361,7 +363,7 @@ with col1:
         f"""
         <div class='metric-card'>
             <div class='metric-title'>Execution Status</div>
-            <div style='margin-top: 0.5rem;'><span class='badge {badge_class}'>{status}</span></div>
+            <div style='margin-top: 0.5rem;'><span class='badge {badge_class}'>{html.escape(str(status))}</span></div>
         </div>
         """,
         unsafe_allow_html=True
