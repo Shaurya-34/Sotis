@@ -30,7 +30,8 @@ st.set_page_config(
 )
 
 # ─── CSS ──────────────────────────────────────────────────────────────────────
-st.markdown("""
+# st.html() is the correct API for injecting <style>/<link> in Streamlit 1.31+
+st.html("""
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -90,7 +91,7 @@ code, pre, .stCode        { font-family: 'JetBrains Mono', monospace !important;
 .subtask-title  { font-size: .84rem; font-weight: 600; }
 .subtask-detail { font-size: .73rem; color: #475569; margin-top: .18rem; }
 </style>
-""", unsafe_allow_html=True)
+""")
 
 # ─── Session state ────────────────────────────────────────────────────────────
 for _k, _v in [
@@ -389,7 +390,7 @@ if steps:
         .configure_view(strokeWidth=0, fill="transparent")
         .configure(background="transparent")
     )
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart, width="stretch")
     st.caption("Red dashed line = meltdown threshold H = 1.5 bits  ·  Orange dots = intercepted meltdowns")
 else:
     st.info("No trajectory data yet. Start an agent session or load a session file.")
