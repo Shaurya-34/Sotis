@@ -6,6 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)]()
 [![Architecture](https://img.shields.io/badge/docs-Architecture-00F2FE)](ARCHITECTURE.md)
+[![Usage](https://img.shields.io/badge/docs-Usage%20%26%20CLI-3B82F6)](USAGE.md)
 
 ```bash
 pip install sotis
@@ -123,14 +124,6 @@ Sotis ships an MCP server so any MCP-capable agent — Claude Code, Claude Deskt
 can report its tool calls and get live meltdown verdicts, while streaming the same
 telemetry to the dashboard.
 
-**1. Install with the MCP extra:**
-
-```bash
-pip install sotis[mcp]
-```
-
-**2. Register the server** in your project's `.mcp.json` (or Claude Desktop config):
-
 ```json
 {
   "mcpServers": {
@@ -139,25 +132,7 @@ pip install sotis[mcp]
 }
 ```
 
-**3. Tell the agent to use it** — add this to your `CLAUDE.md`:
-
-```
-At the start of a task, call sotis_start_session with the goal.
-After every tool call, call sotis_watch(tool_name, tool_args, result_summary).
-If Sotis reports a meltdown, stop, re-read the task, and change approach.
-```
-
-**4. Watch it live:** run `sotis dashboard`, pick the `mcp` session, and toggle
-Live Mode.
-
-The server exposes four tools:
-
-| Tool | Purpose |
-|------|---------|
-| `sotis_start_session(task_goal)` | Begin a monitoring session |
-| `sotis_watch(tool_name, tool_args, result_summary)` | Report a tool call, get a meltdown verdict |
-| `sotis_status()` | Current status, steps, resets, entropy |
-| `sotis_reset()` | Manually clear the rolling window after a deliberate strategy change |
+Full setup, CLI commands, and dashboard guide: **[USAGE.md](USAGE.md)**
 
 ---
 
@@ -201,6 +176,7 @@ Sotis intervenes *during* execution. It intercepts spiraling tool calls, rolls b
 | **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (≥60% token savings) |
 | **Graceful Degradation** | GDS scoring preserves partial progress across resets |
 | **LangGraph Integration** | Native guard node — intercepts state, rolls back files |
+| **Claude Code (MCP)** | MCP server — agents report tool calls, get live meltdown verdicts ([USAGE.md](USAGE.md)) |
 | **Document Processing** | PDF, XLSX, Word, CSV support + Jaccard semantic loop detection |
 | **LLM Support** | OpenAI, Anthropic, DeepSeek, Google Gemini |
 | **Observability** | Streamlit dashboard + structured JSON session logs |
