@@ -5,8 +5,8 @@
 [![PyPI version](https://badge.fury.io/py/sotis.svg)](https://pypi.org/project/sotis/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)]()
-[![Architecture](https://img.shields.io/badge/docs-Architecture-00F2FE)](ARCHITECTURE.md)
-[![Usage](https://img.shields.io/badge/docs-Usage%20%26%20CLI-3B82F6)](USAGE.md)
+[![Architecture](https://img.shields.io/badge/docs-Architecture-00F2FE)](https://github.com/Shaurya-34/Sotis/blob/main/ARCHITECTURE.md)
+[![Usage](https://img.shields.io/badge/docs-Usage%20%26%20CLI-3B82F6)](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md)
 
 ```bash
 pip install sotis
@@ -29,7 +29,7 @@ Context Resetter distills a compact resumption prompt, and execution continues.
 Step telemetry streams to a JSON-L logger that the Streamlit dashboard renders.
 
 > Full architecture diagram, module descriptions, and design decisions:
-> **[ARCHITECTURE.md](ARCHITECTURE.md)**
+> **[ARCHITECTURE.md](https://github.com/Shaurya-34/Sotis/blob/main/ARCHITECTURE.md)**
 
 ---
 
@@ -95,7 +95,7 @@ The dashboard reads session telemetry from `logs/`. Point it elsewhere with
 set the same value when running your agent so both write and read the same
 directory regardless of where each is launched.
 
-Full command reference and the LangGraph integration guide: **[USAGE.md](USAGE.md)**
+Full command reference and the LangGraph integration guide: **[USAGE.md](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md)**
 
 ---
 
@@ -118,7 +118,7 @@ guard = SotisGuard(entropy_config=EntropyConfig(hard_threshold=2.7))
 | `2.0` | Good balance for agents using 3-4 tools regularly. |
 | `2.7` | Permissive — only fires on genuine chaotic switching across 6+ tools. |
 
-This was validated in the [detection gauntlet](ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): default threshold fired a false positive on healthy diverse work (Scenario E), raising to 2.7 eliminated it while preserving 100% true positive detection.
+This was validated in the [detection gauntlet](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): default threshold fired a false positive on healthy diverse work (Scenario E), raising to 2.7 eliminated it while preserving 100% true positive detection.
 
 ---
 
@@ -175,7 +175,7 @@ Four key findings from the paper that Sotis directly addresses:
 
 Full empirical ledger: [`performance_metrics.txt`](https://github.com/Shaurya-34/Sotis/blob/main/performance_metrics.txt)
 
-Real-world validation logs: [`ExperimentLog/real_world_validation/`](ExperimentLog/real_world_validation/)
+Real-world validation logs: [`ExperimentLog/real_world_validation/`](https://github.com/Shaurya-34/Sotis/tree/main/ExperimentLog/real_world_validation)
 
 ---
 
@@ -183,15 +183,15 @@ Real-world validation logs: [`ExperimentLog/real_world_validation/`](ExperimentL
 
 **Reliability decay in frontier LLM agents as task horizon grows** *(Khanal et al. 2026 — arXiv:2603.29231)*
 
-![Reliability Decay](charts/3_reliability_decay.png)
+![Reliability Decay](https://raw.githubusercontent.com/Shaurya-34/Sotis/main/charts/3_reliability_decay.png)
 
 **Context distillation: token reduction after meltdown reset** *(measured with tiktoken BPE cl100k_base)*
 
-![Token Reduction](charts/5_token_reduction.png)
+![Token Reduction](https://raw.githubusercontent.com/Shaurya-34/Sotis/main/charts/5_token_reduction.png)
 
 **Real agent experiments — meltdown intercepts and outcomes** *(Gemini 3.5 · Groq Llama 70B · Mistral local · OpenRouter Gemini)*
 
-![Real Experiments](charts/6_real_experiments.png)
+![Real Experiments](https://raw.githubusercontent.com/Shaurya-34/Sotis/main/charts/6_real_experiments.png)
 
 ---
 
