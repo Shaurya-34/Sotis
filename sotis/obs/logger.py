@@ -19,9 +19,13 @@ class SessionLogger:
     and ExecutionState snapshots to a single session JSON-line file.
     """
 
-    def __init__(self, session_id: str, log_dir: str = "logs") -> None:
+    def __init__(self, session_id: str, log_dir: str | None = None) -> None:
         self.session_id = session_id
-        self.log_dir = log_dir
+        # Resolve the log directory once, to an absolute path, so telemetry
+        # lands in a stable location regardless of the agent's working dir.
+        # Precedence: explicit arg > SOTIS_LOG_DIR env var > ./logs.
+        resolved = log_dir or os.environ.get("SOTIS_LOG_DIR") or "logs"
+        self.log_dir = os.path.abspath(resolved)
         os.makedirs(self.log_dir, exist_ok=True)
         self.log_path = os.path.join(self.log_dir, f"session_{session_id}.json")
 

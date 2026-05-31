@@ -41,6 +41,14 @@ def _launch_dashboard() -> None:
     import os
     from pathlib import Path
 
+    # Optional: `sotis dashboard --logs <path>` overrides where the dashboard
+    # reads session logs from. Falls back to SOTIS_LOG_DIR, then ./logs.
+    args = sys.argv[2:]
+    if "--logs" in args:
+        i = args.index("--logs")
+        if i + 1 < len(args):
+            os.environ["SOTIS_LOG_DIR"] = os.path.abspath(args[i + 1])
+
     app_path = str(Path(__file__).parent / "obs" / "app.py")
     sys.argv = ["streamlit", "run", app_path, "--server.headless", "false"]
     sys.exit(stcli.main())

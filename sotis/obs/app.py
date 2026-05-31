@@ -197,16 +197,22 @@ def _load_incremental(path: str):
 
 # ─── Discover sessions ────────────────────────────────────────────────────────
 
-log_files = sorted(glob.glob(os.path.join("logs", "session_*.json")), reverse=True)
+# Honor SOTIS_LOG_DIR so the dashboard reads the same directory the agent wrote
+# to, regardless of where either process was launched. Falls back to ./logs.
+LOG_DIR = os.path.abspath(os.environ.get("SOTIS_LOG_DIR") or "logs")
+log_files = sorted(glob.glob(os.path.join(LOG_DIR, "session_*.json")), reverse=True)
 
 if not log_files:
     st.markdown(
         "<div style='padding:5rem 0;text-align:center'>"
         "<div style='font-size:.65rem;font-weight:800;letter-spacing:.18rem;"
         "text-transform:uppercase;color:#374151;margin-bottom:1.5rem'>No Data</div>"
-        "<div style='font-size:1.1rem;font-weight:700;color:#6B7280'>No session files in logs/</div>"
-        "<div style='font-size:.85rem;color:#4B5563;margin-top:.5rem'>"
-        "Run <code>sotis benchmark</code> or connect an agent with SotisLangGraphGuard</div>"
+        f"<div style='font-size:1.1rem;font-weight:700;color:#6B7280'>No session files found</div>"
+        f"<div style='font-size:.78rem;color:#374151;margin-top:.4rem;font-family:JetBrains Mono,monospace'>"
+        f"{html.escape(LOG_DIR)}</div>"
+        "<div style='font-size:.85rem;color:#4B5563;margin-top:.6rem'>"
+        "Run <code>sotis benchmark</code>, or connect an agent with SotisLangGraphGuard.<br>"
+        "Point elsewhere with <code>sotis dashboard --logs &lt;path&gt;</code> or <code>SOTIS_LOG_DIR</code>.</div>"
         "</div>",
         unsafe_allow_html=True,
     )
