@@ -110,11 +110,28 @@ for step in range(max_steps):
 [WARNING]   Anomaly detected: Workspace edit storm and exact argument loops
 [INTERCEPT] Sotis Meltdown Interception Triggered!
 [RECOVER]   Restored workspace files to stable baseline (step 22 diff)
-[RECOVER]   Distilled session context history (78% token savings)
+[RECOVER]   Distilled session context history (86% token savings)
 [RESUME]    Injecting resumption briefing into agent context...
 
 [Step 26] grep_search -> {"query": "math"} | Execution resumed cleanly
 ```
+
+---
+
+## CLI
+
+```bash
+sotis dashboard    # Launch the Streamlit observability dashboard
+sotis benchmark    # Run the empirical benchmark suite
+sotis demo         # Run the built-in meltdown/recovery demo
+```
+
+The dashboard reads session telemetry from `logs/`. Point it elsewhere with
+`sotis dashboard --logs <path>` or the `SOTIS_LOG_DIR` environment variable —
+set the same value when running your agent so both write and read the same
+directory regardless of where each is launched.
+
+Full command reference and the LangGraph integration guide: **[USAGE.md](USAGE.md)**
 
 ---
 
@@ -185,7 +202,7 @@ Four key findings from the paper that Sotis directly addresses:
 | Metric | Result |
 |---|---|
 | Entropy + loop detection latency | < 0.2ms per step |
-| Context distillation token reduction | ~87% (BPE cl100k_base) |
+| Context distillation token reduction | 86.14% (BPE cl100k_base) |
 | Test suite | 127 tests, 88% coverage |
 | Live recovery | Verified on circular import and AST recursive loop traps |
 | Live LLM validation (llama-3.1-8b on Groq) | Raw agent: 1/4 requirements met. Sotis agent: 3/4 requirements met. |
