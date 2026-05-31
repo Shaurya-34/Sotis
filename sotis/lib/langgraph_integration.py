@@ -99,6 +99,8 @@ class SotisLangGraphGuard:
     loop_config         : Custom LoopConfig overrides.
     distillation_config : Custom DistillationConfig overrides.
     session_id          : Optional custom session ID.
+    max_resets          : Maximum context resets before the session is hard-failed
+                          (default 5). Raise for harder, multi-stage tasks.
     """
 
     def __init__(
@@ -110,10 +112,13 @@ class SotisLangGraphGuard:
         loop_config: Optional[LoopConfig] = None,
         distillation_config: Optional[DistillationConfig] = None,
         session_id: Optional[str] = None,
+        max_resets: int = 5,
     ) -> None:
         self.task_goal = task_goal
         self.workspace_paths = workspace_paths or []
         self.session_id = session_id or f"sotis-lg-{uuid.uuid4().hex[:8]}"
+        # Maximum context resets allowed before the session is hard-failed.
+        self.max_resets = max_resets
 
         # Initialize core engine modules
         self.state = ExecutionState(session_id=self.session_id, domain=domain)
@@ -180,10 +185,10 @@ class SotisLangGraphGuard:
                     meltdown_detected = True
                     self.total_resets += 1
 
-                    if self.total_resets > 2:
+                    if self.total_resets > self.max_resets:
                         self.state.status = SessionStatus.HARD_FAILED
-                        logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}). Hard failing.")
-                        raise RuntimeError("Sotis intercepted a terminal agent meltdown: Context reset limit (2) exceeded.")
+                        logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}/{self.max_resets}). Hard failing.")
+                        raise RuntimeError(f"Sotis intercepted a terminal agent meltdown: Context reset limit ({self.max_resets}) exceeded.")
 
                     meltdown_signal = MeltdownSignal(
                         session_id=self.session_id,
@@ -224,10 +229,10 @@ class SotisLangGraphGuard:
                     self.total_resets += 1
 
                     # Cap enforcement
-                    if self.total_resets > 2:
+                    if self.total_resets > self.max_resets:
                         self.state.status = SessionStatus.HARD_FAILED
-                        logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}). Hard failing.")
-                        raise RuntimeError("Sotis intercepted a terminal agent meltdown: Context reset limit (2) exceeded.")
+                        logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}/{self.max_resets}). Hard failing.")
+                        raise RuntimeError(f"Sotis intercepted a terminal agent meltdown: Context reset limit ({self.max_resets}) exceeded.")
 
                     # Capture meltdown signal
                     meltdown_signal = MeltdownSignal(

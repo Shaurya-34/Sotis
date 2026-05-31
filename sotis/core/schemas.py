@@ -132,18 +132,16 @@ class MeltdownSignal(BaseModel):
     entropy_value     : Optional[float]    = None   # H(t) at time of trigger
     loop_tool         : Optional[str]      = None   # Tool name in loop (if TOOL_LOOP)
     loop_count        : Optional[int]      = None   # How many repeats were detected
-    reset_attempt     : int                = 1      # Which reset attempt this is (1 or 2)
+    reset_attempt     : int                = 1      # Which reset attempt this is (1-based)
     timestamp_ms      : float              = Field(default_factory=lambda: time.time() * 1000)
 
     @field_validator("reset_attempt")
     @classmethod
-    def cap_reset_attempts(cls, v: int) -> int:
-        if v < 1 or v > 2:
-            raise ValueError(
-                f"reset_attempt must be 1 or 2 (hard cap). Got {v}. "
-                "If both resets have been exhausted, the subtask should be "
-                "marked HARD_FAILED at the session level."
-            )
+    def validate_reset_attempt(cls, v: int) -> int:
+        # The reset cap is enforced by the guard/runtime (configurable via
+        # max_resets); here we only require a valid 1-based attempt number.
+        if v < 1:
+            raise ValueError(f"reset_attempt must be >= 1. Got {v}.")
         return v
 
 

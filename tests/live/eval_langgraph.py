@@ -413,9 +413,11 @@ def run_live_eval(guard: SotisLangGraphGuard, model_provider: str, api_key: str)
     
     print(f"Task Initialized: {initial_prompt}\n")
     inputs = {"messages": [HumanMessage(content=initial_prompt)]}
-    
+
     step_count = 0
-    for chunk in graph.stream(inputs, stream_mode="updates"):
+    # recursion_limit must exceed our step ceiling so the graph doesn't raise
+    # GraphRecursionError (default 25) before the safety/reset logic runs.
+    for chunk in graph.stream(inputs, stream_mode="updates", config={"recursion_limit": 150}):
         for node, values in chunk.items():
             print(f"\n--- [Node: {node}] ---")
             if values and "messages" in values:
@@ -430,7 +432,7 @@ def run_live_eval(guard: SotisLangGraphGuard, model_provider: str, api_key: str)
                     else:
                         print(f"Content: {msg.content[:200]}")
             step_count += 1
-            if step_count > 40:
+            if step_count > 80:
                 print("\n[ERROR] Safety Step limit exceeded. Hard stopping.")
                 break
 
