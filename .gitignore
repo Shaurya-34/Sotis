@@ -56,6 +56,11 @@ a.txt
 # Coverage HTML report (generated, not source)
 htmlcov/
 
+# Live eval workspace: trap files are seeded per-run from ExperimentLog and
+# session logs are generated — never track them. Keep only the package marker.
+tests/live_test_workspace/*
+!tests/live_test_workspace/live_test_workspace/
+
 # ExperimentLog: keep run logs and workspace source, exclude generated artifacts
 ExperimentLog/**/__pycache__/
 ExperimentLog/**/.pytest_cache/
