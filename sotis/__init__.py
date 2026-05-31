@@ -17,7 +17,7 @@ from sotis.core.schemas import StepEvent, MeltdownSignal, Domain, MeltdownReason
 from sotis.core.entropy import SessionEntropyTracker, EntropyConfig
 from sotis.core.loops import SessionLoopTracker, LoopConfig, WorkspaceDensityGuard
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 __author__ = "Sotis Contributors"
 
 
