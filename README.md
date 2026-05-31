@@ -20,52 +20,16 @@ Long-running agents fail in predictable ways — they loop on the same tool call
 
 ## Architecture
 
-```mermaid
-graph TD
-    %% Styling and layout
-    classDef default fill:#1E293B,stroke:#334155,color:#F8FAFC;
-    classDef core fill:#0F172A,stroke:#00F2FE,color:#00F2FE,stroke-width:2px;
-    classDef lib fill:#0F172A,stroke:#3B82F6,color:#3B82F6,stroke-width:2px;
-    classDef obs fill:#0F172A,stroke:#10B981,color:#10B981,stroke-width:2px;
+An agent goal is decomposed into a DAG of subtasks and executed through the
+Sotis ReAct runtime or the LangGraph guard. Every step is fed to the **core
+layer** — the Shannon entropy monitor, the Jaccard/fingerprint loop detector,
+and the workspace density guard. When any of them flags a meltdown, the
+Checkpoint Manager rolls the workspace back to its last stable state, the
+Context Resetter distills a compact resumption prompt, and execution continues.
+Step telemetry streams to a JSON-L logger that the Streamlit dashboard renders.
 
-    A[Agent Goal / User Prompt] --> B(Task Decomposer)
-    B --> C[Topological DAG of Subtasks]
-    C --> D[Sotis ReAct Runtime / LangGraph Guard]
-
-    subgraph Core ["Sotis Core Layer (Pure Python & Math)"]
-        E(Shannon Entropy Monitor)
-        F(Jaccard & Fingerprint Loop Detector)
-        G(Workspace Density Guard)
-        H(Checkpoint Manager)
-        I(Context Resetter)
-        J(GDS Scorer)
-    end
-    class E,F,G,H,I,J core;
-
-    subgraph Adapters ["LLM Adapters"]
-        K[OpenAI Adapter]
-        L[Anthropic Adapter]
-        M[DeepSeek Adapter]
-    end
-    class K,L,M lib;
-
-    D --> E & F & G
-    E & F & G -->|Meltdown Intercept| H
-    H -->|Workspace Rollback| TargetWorkspace[("Target File Workspace")]
-    H -->|Unified Diffs| I
-    I -->|Distilled Resumption Prompt| D
-
-    subgraph Observability ["Observability & Telemetry"]
-        N[JSON-L Logger]
-        O[Streamlit Dashboard]
-    end
-    class N,O obs;
-
-    D -->|Step Telemetry| N
-    N --> O
-```
-
-> Full architecture details, module descriptions, and design decisions: [ARCHITECTURE.md](ARCHITECTURE.md)
+> Full architecture diagram, module descriptions, and design decisions:
+> **[ARCHITECTURE.md](ARCHITECTURE.md)**
 
 ---
 
