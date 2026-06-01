@@ -24,6 +24,26 @@ Long-running agents fail in predictable ways — they loop on the same tool call
 
 ---
 
+## Who it's for
+
+Sotis is a **library you add to agents you build.** It lives *inside* your
+agent's execution loop, so it can do more than observe — it intercepts a
+spiraling agent, rolls back the files it touched, distills the context, and
+resumes it.
+
+- ✅ **LangGraph agents** — drop in `SotisLangGraphGuard` as a guard node
+  ([USAGE.md](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md))
+- ✅ **Custom ReAct / tool-calling loops** — wrap your loop with `SotisGuard`
+- ✅ **Any LLM provider** — OpenAI, Anthropic, DeepSeek, Google, or
+  OpenAI-compatible endpoints (Groq, OpenRouter)
+
+Sotis is **not** a plugin for closed agents you don't control — e.g. Claude
+Code or Codex. Those expose no hook into their loop, so the rollback/reset
+intervention isn't possible there. If you're building the agent, Sotis fits;
+if you're using someone else's finished agent, it doesn't.
+
+---
+
 ## Architecture
 
 An agent goal is decomposed into a DAG of subtasks and executed through the
@@ -70,6 +90,10 @@ for step in range(max_steps):
 ```
 
 ### What it looks like in practice
+
+*Illustrative output of a healthy intercept-and-recover cycle. For a real,
+unedited run (where a weaker model spirals and Sotis intercepts 3 meltdowns),
+see the [demo GIF](#sotis) and [raw transcript](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/circular%20import%20trap/run_groq_llama70b_meltdown_20260601.txt) above.*
 
 ```
 [Step 22] write_file -> {"path": "src/main.py", "content": "import math"} | SUCCESS
