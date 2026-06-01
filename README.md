@@ -12,6 +12,8 @@
 
 *Live run: a real LLM agent spirals on a buggy codebase. Sotis detects three meltdowns in real time, intercepts each one, and degrades gracefully (GDS 1.0 → 0.4) instead of letting the agent burn.*
 
+<sub>📄 Full raw terminal transcript of this run: [`run_groq_llama70b_meltdown_20260601.txt`](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/circular%20import%20trap/run_groq_llama70b_meltdown_20260601.txt)</sub>
+
 ```bash
 pip install sotis
 ```
