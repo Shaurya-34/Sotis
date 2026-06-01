@@ -8,6 +8,10 @@
 [![Architecture](https://img.shields.io/badge/docs-Architecture-00F2FE)](https://github.com/Shaurya-34/Sotis/blob/main/ARCHITECTURE.md)
 [![Usage](https://img.shields.io/badge/docs-Usage%20%26%20CLI-3B82F6)](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md)
 
+![Sotis intercepting a live agent meltdown](https://raw.githubusercontent.com/Shaurya-34/Sotis/main/assets/demo.gif)
+
+*Live run: a real LLM agent spirals on a buggy codebase. Sotis detects three meltdowns in real time, intercepts each one, and degrades gracefully (GDS 1.0 → 0.4) instead of letting the agent burn.*
+
 ```bash
 pip install sotis
 ```

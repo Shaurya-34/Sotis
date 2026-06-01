@@ -43,6 +43,12 @@ MANIFEST
 *.secret.ps1
 demo.secret.ps1
 
+# Raw demo recordings (source files; only the exported assets/*.gif is tracked)
+*.mp4
+*.mov
+*.mkv
+*.webm
+
 # Logs
 logs/
 *.log
