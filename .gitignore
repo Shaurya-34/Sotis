@@ -40,6 +40,8 @@ MANIFEST
 .env
 .env.local
 .env.*
+*.secret.ps1
+demo.secret.ps1
 
 # Logs
 logs/
