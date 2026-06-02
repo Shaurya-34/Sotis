@@ -200,12 +200,15 @@ Four key findings from the paper that Sotis directly addresses:
 | Test suite | 127 tests, 88% coverage |
 | Live recovery | Verified on circular import and AST recursive loop traps |
 | Live LLM validation (llama-3.1-8b on Groq) | Raw agent: 1/4 requirements met. Sotis agent: 3/4 requirements met. |
+| Local model validation (mistral:latest via Ollama) | Caught a real TOOL_LOOP meltdown and corrected agent behavior after reset |
 | Detection accuracy (6-scenario gauntlet) | 100% true positive rate, 0% false negatives |
 | Total API cost for full validation suite | < $0.01 (Groq free tier) |
 
 Full empirical ledger: [`performance_metrics.txt`](https://github.com/Shaurya-34/Sotis/blob/main/performance_metrics.txt)
 
 Real-world validation logs: [`ExperimentLog/real_world_validation/`](https://github.com/Shaurya-34/Sotis/tree/main/ExperimentLog/real_world_validation)
+
+Local model run (Ollama — mistral:latest meltdown + gemma3:4b tool-binding notes): [`sotis_gemma_mistral_run_review.txt`](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/document%20handling%20loop/sotis_gemma_mistral_run_review.txt)
 
 ---
 
