@@ -44,6 +44,38 @@ if you're using someone else's finished agent, it doesn't.
 
 ---
 
+## Scope & limitations
+
+Being clear about what Sotis does **not** do is as important as what it does:
+
+- **Reliability, not adversarial security.** Sotis assumes the agent is *trying*
+  to do the right thing and degrading. Entropy/loop detection is a statistical
+  signal, and any threshold-based signal is gameable by definition — an attacker
+  who knows the logic can craft an injection that stays under it. Sotis is a
+  circuit breaker for *accidental* failure, not a defense against a deliberate
+  adversary. Pair it with a real injection/intent layer if that's your threat
+  model.
+- **It catches loud failures, not quiet corruption.** Entropy + loop detection
+  read the *shape* of the tool-call stream, so they catch the visible spiral —
+  thrashing, repeats, edit storms. They are blind by construction to the *quiet*
+  failure: an agent confidently proceeding on a state that silently went wrong
+  several steps back (low entropy, no repeats, still corrupt). Catching that
+  needs a semantic, world-state signal (goal-progress regression, contradiction
+  detection) — on the roadmap, not shipped.
+- **Checkpoint "goodness" is content-based, not invariant-verified (yet).**
+  Today Sotis rolls back to the last *snapshot*, not a state proven good by a
+  checked invariant. If a tool call silently corrupted state before the meltdown
+  was visible, the rollback target may itself be poisoned. Invariant-verified
+  checkpoints (re-read/re-validate at checkpoint time) are the planned fix.
+- **It bounds failure; it doesn't guarantee success.** Sotis stops the spiral
+  and hands you a clean, recoverable state — it does not make a weak model
+  finish the task.
+
+See the [open issues](https://github.com/Shaurya-34/Sotis/issues) for the
+roadmap addressing these.
+
+---
+
 ## Architecture
 
 An agent goal is decomposed into a DAG of subtasks and executed through the
