@@ -305,6 +305,17 @@ if last_snapshot and last_snapshot.get("subtasks"):
 else:
     gds_val = max(0.0, 1.0 - total_resets * 0.2)
 
+# ─── Token usage + effective threshold (new feature telemetry) ────────────────
+total_tokens = sum(int(s.get("tokens") or 0) for s in steps)
+has_tokens   = any(s.get("tokens") is not None for s in steps)
+
+# The threshold the entropy detector actually compared against. With adaptive
+# mode it varies; take the most recent meltdown's effective_threshold. Falls
+# back to 1.5 for old sessions that never logged it.
+_thr_records   = [m.get("effective_threshold") for m in meltdowns if m.get("effective_threshold") is not None]
+entropy_thr    = _thr_records[-1] if _thr_records else 1.5
+adaptive_run   = any(m.get("adaptive_active") for m in meltdowns)
+
 # ─── METRIC ROW ───────────────────────────────────────────────────────────────
 
 badge_key    = status if status in ("RUNNING","MELTDOWN","COMPLETED","RESUMED","HARD_FAILED","INTERRUPTED") else "UNKNOWN"
@@ -315,7 +326,14 @@ bar_gds      = "#00E396" if gds_val > 0.7 else "#FEB019" if gds_val > 0.4 else "
 
 live_indicator = "<span class='live-pip'>live</span>" if live_mode else ""
 
-mc1, mc2, mc3, mc4 = st.columns(4)
+# Format token total compactly (e.g. 12.4k)
+def _fmt_tokens(n: int) -> str:
+    if n >= 1000:
+        return f"{n/1000:.1f}k"
+    return str(n)
+
+cols = st.columns(5 if has_tokens else 4)
+mc1, mc2, mc3, mc4 = cols[0], cols[1], cols[2], cols[3]
 with mc1:
     st.markdown(
         f"<div class='m-card' style='border-left-color:#4FACFE'>"
@@ -348,6 +366,15 @@ with mc4:
         f"</div>",
         unsafe_allow_html=True,
     )
+if has_tokens:
+    with cols[4]:
+        st.markdown(
+            f"<div class='m-card' style='border-left-color:#A78BFA'>"
+            f"<div class='m-label'>Tokens</div>"
+            f"<div class='m-value' style='color:#A78BFA'>{_fmt_tokens(total_tokens)}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
 st.write("")
 
@@ -401,8 +428,9 @@ if steps:
         ),
     ).encode(x=x_axis, y=y_axis)
 
-    # Meltdown threshold
-    threshold = alt.Chart(pd.DataFrame({"y": [1.5]})).mark_rule(
+    # Meltdown threshold — the value the entropy detector actually compared
+    # against (adaptive when adaptive mode is on), not a hardcoded 1.5.
+    threshold = alt.Chart(pd.DataFrame({"y": [entropy_thr]})).mark_rule(
         color="#FF4560", strokeDash=[4, 4], strokeWidth=1.5
     ).encode(y="y:Q")
 
@@ -419,10 +447,12 @@ if steps:
         .configure_view(strokeWidth=0, fill="#080C14")
     )
     st.altair_chart(chart, width="stretch")
+    _thr_label = (f"ADAPTIVE THRESHOLD (H = {entropy_thr:.2f} bits)" if adaptive_run
+                  else f"MELTDOWN THRESHOLD (H = {entropy_thr:.2f} bits)")
     st.markdown(
-        "<div style='font-size:.65rem;color:#4B5563;letter-spacing:.06rem;margin-top:-.3rem'>"
-        "RED DASHED = MELTDOWN THRESHOLD (H = 1.5 bits) &nbsp;·&nbsp; AMBER DOTS = INTERCEPTED MELTDOWNS"
-        "</div>",
+        f"<div style='font-size:.65rem;color:#4B5563;letter-spacing:.06rem;margin-top:-.3rem'>"
+        f"RED DASHED = {_thr_label} &nbsp;·&nbsp; AMBER DOTS = INTERCEPTED MELTDOWNS"
+        f"</div>",
         unsafe_allow_html=True,
     )
 else:
@@ -478,11 +508,23 @@ with feed_col:
                 ev     = m.get("entropy_value", "")
                 lt     = m.get("loop_tool") or ""
                 ev_s   = f"H={ev:.3f}" if isinstance(ev, float) else ""
-                detail = "  ·  ".join(filter(None, [lt, ev_s])) or "context reset · workspace rolled back"
+                # New telemetry: adaptive flag, effective threshold, rollback target
+                eff    = m.get("effective_threshold")
+                thr_s  = f"thr={eff:.2f}" if isinstance(eff, (int, float)) else ""
+                adapt  = "<span style='color:#A78BFA'>adaptive</span>" if m.get("adaptive_active") else ""
+                rb     = m.get("rollback_target")
+                detail = "  ·  ".join(filter(None, [lt, ev_s, thr_s])) or "context reset · workspace rolled back"
+                rb_html = ""
+                if rb:
+                    rb_color = "#00E396" if str(rb).startswith("verified") else "#6B7280"
+                    rb_html = (f"<div class='md-detail' style='color:{rb_color}'>"
+                               f"↩ rolled back to {html.escape(str(rb))}</div>")
+                tag_html = f"&nbsp; {adapt}" if adapt else ""
                 st.markdown(
                     f"<div class='md-item'>"
-                    f"<div class='md-step'>[STEP {at}] &nbsp; {html.escape(rsn)}</div>"
+                    f"<div class='md-step'>[STEP {at}] &nbsp; {html.escape(rsn)}{tag_html}</div>"
                     f"<div class='md-detail'>{html.escape(detail)}</div>"
+                    f"{rb_html}"
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -512,11 +554,15 @@ with st.expander("STEP EXPLORER", expanded=False):
         active = steps[step_idx - 1]
         left, right = st.columns([1, 2])
         with left:
+            _tok = active.get("tokens")
+            _tok_html = (f"<br><span style='color:#A78BFA'>TOKENS</span> &nbsp;{_tok}"
+                         if _tok is not None else "")
             st.markdown(
                 f"<div style='font-family:JetBrains Mono,monospace;font-size:.8rem;line-height:1.8;color:#374151'>"
                 f"<span style='color:#4FACFE'>STEP</span> &nbsp;{active.get('step_index', step_idx)}<br>"
-                f"<span style='color:#4FACFE'>TOOL</span> &nbsp;{html.escape(active['tool_name'])}<br>"
-                f"{'<span style=color:#4FACFE>NODE</span> &nbsp;' + html.escape(active['node']) if 'node' in active else ''}"
+                f"<span style='color:#4FACFE'>TOOL</span> &nbsp;{html.escape(active['tool_name'])}"
+                f"{'<br><span style=color:#4FACFE>NODE</span> &nbsp;' + html.escape(active['node']) if 'node' in active else ''}"
+                f"{_tok_html}"
                 f"</div>",
                 unsafe_allow_html=True,
             )

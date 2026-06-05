@@ -194,6 +194,7 @@ class SotisLangGraphGuard:
                         logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}/{self.max_resets}). Hard failing.")
                         raise RuntimeError(f"Sotis intercepted a terminal agent meltdown: Context reset limit ({self.max_resets}) exceeded.")
 
+                    _vn = self.checkpoint_mgr.verified_count
                     meltdown_signal = MeltdownSignal(
                         session_id=self.session_id,
                         subtask_id=None,
@@ -203,6 +204,7 @@ class SotisLangGraphGuard:
                         loop_tool="text_reasoning_loop",
                         loop_count=3,
                         reset_attempt=self.total_resets,
+                        rollback_target=(f"verified-good #{_vn}" if _vn > 0 else "baseline"),
                     )
                     self.state.record_meltdown(meltdown_signal)
                     self.telemetry.log_meltdown(meltdown_signal)
@@ -238,6 +240,12 @@ class SotisLangGraphGuard:
                         logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}/{self.max_resets}). Hard failing.")
                         raise RuntimeError(f"Sotis intercepted a terminal agent meltdown: Context reset limit ({self.max_resets}) exceeded.")
 
+                    # Rollback target is known now (the verified chain exists
+                    # pre-rollback): verified-good #N if any verified snapshot
+                    # exists, else baseline.
+                    _vn = self.checkpoint_mgr.verified_count
+                    rollback_target = f"verified-good #{_vn}" if _vn > 0 else "baseline"
+
                     # Capture meltdown signal
                     meltdown_signal = MeltdownSignal(
                         session_id=self.session_id,
@@ -248,6 +256,9 @@ class SotisLangGraphGuard:
                         loop_tool=self.density_guard.triggered_file or loop_res.dominant_tool_name,
                         loop_count=3 if density_triggered else loop_res.dominant_count,
                         reset_attempt=self.total_resets,
+                        effective_threshold=entropy_res.effective_threshold,
+                        adaptive_active=entropy_res.adaptive_active,
+                        rollback_target=rollback_target,
                     )
                     self.state.record_meltdown(meltdown_signal)
                     self.telemetry.log_meltdown(meltdown_signal)
@@ -310,12 +321,22 @@ class SotisLangGraphGuard:
         ai_tool_calls: Dict[str, Dict[str, Any]] = {}
         for msg in messages:
             if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+                # Per-step token usage, if the provider reported it. LangChain
+                # exposes this on AIMessage.usage_metadata (UsageMetadata with a
+                # total_tokens field). Attaches to every tool call in this AIMessage.
+                tokens: Optional[int] = None
+                usage = getattr(msg, "usage_metadata", None)
+                if usage is not None:
+                    tok = usage.get("total_tokens") if isinstance(usage, dict) else getattr(usage, "total_tokens", None)
+                    if isinstance(tok, int) and tok >= 0:
+                        tokens = tok
                 for tc in msg.tool_calls:
                     call_id = tc.get("id") or tc.get("call_id")
                     if isinstance(call_id, str):
                         ai_tool_calls[call_id] = {
                             "name": tc.get("name"),
                             "args": tc.get("args") or tc.get("arguments") or {},
+                            "tokens": tokens,
                         }
 
         # Scan for unprocessed ToolMessages
@@ -334,6 +355,7 @@ class SotisLangGraphGuard:
                     tool_name=tool_name,
                     tool_args=ai_info["args"],
                     result_summary=str(msg.content)[:400] if msg.content else None,
+                    tokens=ai_info.get("tokens"),
                 )
                 events.append(event)
                 self._processed_message_ids.add(msg_id)

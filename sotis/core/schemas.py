@@ -137,6 +137,10 @@ class MeltdownSignal(BaseModel):
     loop_tool         : Optional[str]      = None   # Tool name in loop (if TOOL_LOOP)
     loop_count        : Optional[int]      = None   # How many repeats were detected
     reset_attempt     : int                = 1      # Which reset attempt this is (1-based)
+    # Observability fields (surfaced on the dashboard)
+    effective_threshold: Optional[float]   = None   # Entropy threshold actually compared against
+    adaptive_active   : bool               = False  # True if the adaptive (per-agent) band was in effect
+    rollback_target   : Optional[str]      = None   # "verified-good #N" or "baseline"
     timestamp_ms      : float              = Field(default_factory=lambda: time.time() * 1000)
 
     @field_validator("reset_attempt")
