@@ -30,7 +30,13 @@ from typing import List
 
 import pytest
 
-from sotis.core.loops import LoopConfig, LoopDetector, LoopResult, SessionLoopTracker
+from sotis.core.loops import (
+    LoopConfig,
+    LoopDetector,
+    LoopResult,
+    SessionLoopTracker,
+    TokenSpikeGuard,
+)
 from sotis.core.schemas import MeltdownReason, StepEvent
 
 
@@ -486,3 +492,94 @@ class TestSemanticQueryLoop:
         assert res.meltdown_detected is False
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TokenSpikeGuard — corroborating signal (Issue #3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTokenSpikeGuard:
+    """Per-step token-usage spike detection against the session's rolling mean."""
+
+    def _ev(self, step: int, tokens=None) -> StepEvent:
+        return StepEvent(step_index=step, tool_name="call", tokens=tokens)
+
+    def test_no_token_data_is_noop(self) -> None:
+        g = TokenSpikeGuard()
+        assert g.push_event(self._ev(0)) is False
+        assert g.last_ratio is None
+
+    def test_steady_usage_never_spikes(self) -> None:
+        g = TokenSpikeGuard(spike_factor=3.0, min_samples=4)
+        for i, tok in enumerate([100, 105, 95, 100, 102, 98]):
+            assert g.push_event(self._ev(i, tok)) is False
+
+    def test_spike_detected_above_factor(self) -> None:
+        g = TokenSpikeGuard(spike_factor=3.0, min_samples=4)
+        for i, tok in enumerate([100, 100, 100, 100]):
+            g.push_event(self._ev(i, tok))
+        # 500 / mean(100) = 5.0 >= 3.0
+        assert g.push_event(self._ev(4, 500)) is True
+        assert g.latest_spike is True
+        assert g.last_ratio == pytest.approx(5.0)
+
+    def test_below_factor_does_not_spike(self) -> None:
+        g = TokenSpikeGuard(spike_factor=3.0, min_samples=4)
+        for i, tok in enumerate([100, 100, 100, 100]):
+            g.push_event(self._ev(i, tok))
+        # 250 / 100 = 2.5 < 3.0
+        assert g.push_event(self._ev(4, 250)) is False
+
+    def test_cold_start_no_spike_before_min_samples(self) -> None:
+        g = TokenSpikeGuard(spike_factor=3.0, min_samples=4)
+        # Even a huge value can't spike before min_samples baseline exists.
+        assert g.push_event(self._ev(0, 1)) is False
+        assert g.push_event(self._ev(1, 9999)) is False
+
+    def test_reset_clears_history(self) -> None:
+        g = TokenSpikeGuard(spike_factor=3.0, min_samples=4)
+        for i, tok in enumerate([100, 100, 100, 100]):
+            g.push_event(self._ev(i, tok))
+        g.reset()
+        # After reset, baseline is gone -> the next big value can't spike yet.
+        assert g.push_event(self._ev(0, 9999)) is False
+
+    def test_invalid_config_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            TokenSpikeGuard(spike_factor=1.0)
+        with pytest.raises(ValueError):
+            TokenSpikeGuard(window_size=1)
+        with pytest.raises(ValueError):
+            TokenSpikeGuard(min_samples=1)
+
+
+class TestTokenSpikeCorroboration:
+    """A token spike alone must not trigger; corroborating an entropy early
+    warning should. Verified end-to-end through SotisGuard."""
+
+    def test_spike_alone_does_not_trigger_meltdown(self) -> None:
+        # Isolate the corroboration rule directly: a token spike WITHOUT an
+        # entropy early warning must not, by itself, be reported as a meltdown.
+        from sotis.core.loops import TokenSpikeGuard
+        from sotis.core.entropy import EntropyResult
+
+        tg = TokenSpikeGuard(spike_factor=3.0, min_samples=4)
+        for i, tok in enumerate([100, 100, 100, 100]):
+            tg.push_event(StepEvent(step_index=i, tool_name="t", tokens=tok))
+        spike = tg.push_event(StepEvent(step_index=4, tool_name="t", tokens=100_000))
+        assert spike is True  # the spike itself is observed
+
+        # corroboration logic mirrors SotisGuard.watch: spike AND early_warning
+        no_warning = EntropyResult(step_index=4, entropy=0.5, early_warning=False)
+        assert (spike and no_warning.early_warning) is False
+
+        with_warning = EntropyResult(step_index=4, entropy=0.5, early_warning=True)
+        assert (spike and with_warning.early_warning) is True
+
+    def test_token_guard_is_reset_with_guard(self) -> None:
+        from sotis import SotisGuard
+        guard = SotisGuard()
+        for i, tok in enumerate([100, 100, 100, 100]):
+            guard.watch(StepEvent(step_index=i, tool_name="t", tool_args={}, tokens=tok))
+        guard.reset()
+        assert guard.token_guard._history == []

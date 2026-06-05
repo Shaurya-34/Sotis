@@ -200,6 +200,15 @@ a baseline exists) it falls back to a conservative threshold, and loop detection
 still covers tight loops throughout. Tunable via `sigma_k`, `baseline_window`,
 `min_baseline_samples`, and `cold_start_threshold` on `EntropyConfig`.
 
+### Token-spike corroboration
+
+If you report per-step token usage on the `StepEvent` (`tokens=...`), Sotis tracks
+a rolling token/step average and flags a spike (default: ≥3× the mean). A spike
+is a **corroborating** signal, not a sole trigger — a single large tool result
+can spike tokens without any spiral — so it promotes a rising-entropy *early
+warning* into a meltdown rather than firing alone. Tune with the
+`token_spike_factor` argument to `SotisGuard`.
+
 ---
 
 ## Active Stabilization, Not Passive Tracing

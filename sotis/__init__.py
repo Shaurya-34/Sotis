@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional, Union
 
 from sotis.core.schemas import StepEvent, MeltdownSignal, Domain, MeltdownReason
 from sotis.core.entropy import SessionEntropyTracker, EntropyConfig
-from sotis.core.loops import SessionLoopTracker, LoopConfig, WorkspaceDensityGuard
+from sotis.core.loops import SessionLoopTracker, LoopConfig, WorkspaceDensityGuard, TokenSpikeGuard
 
 __version__ = "1.1.4"
 __author__ = "Sotis Contributors"
@@ -40,10 +40,12 @@ class SotisGuard:
         entropy_config: Optional[EntropyConfig] = None,
         loop_config: Optional[LoopConfig] = None,
         max_consecutive_edits: int = 3,
+        token_spike_factor: float = 3.0,
     ) -> None:
         self.entropy_tracker = SessionEntropyTracker(entropy_config)
         self.loop_tracker = SessionLoopTracker(loop_config)
         self.density_guard = WorkspaceDensityGuard(max_consecutive_edits)
+        self.token_guard = TokenSpikeGuard(spike_factor=token_spike_factor)
         self._step_counter = 0
 
     def watch(
@@ -70,16 +72,25 @@ class SotisGuard:
             )
             self._step_counter += 1
 
-        # Push to all three monitors
+        # Push to all monitors
         entropy_res = self.entropy_tracker.push_event(event)
         loop_res = self.loop_tracker.push_event(event)
         density_res = self.density_guard.push_event(event)
+        token_spike = self.token_guard.push_event(event)
 
-        # Returns True if any meltdown is triggered
+        # A token spike is a *corroborating* signal, not a sole trigger: on its
+        # own a single large tool result can spike tokens without any spiral.
+        # But a spike co-occurring with a rising-entropy early warning is strong
+        # evidence of a context-poisoning loop, so it promotes that warning to a
+        # meltdown.
+        corroborated = token_spike and entropy_res.early_warning
+
+        # Returns True if any monitor fires, or the corroborated combination does
         return (
             entropy_res.meltdown_detected or
             loop_res.meltdown_detected or
-            density_res
+            density_res or
+            corroborated
         )
 
     def reset(self) -> None:
@@ -87,6 +98,7 @@ class SotisGuard:
         self.entropy_tracker.reset()
         self.loop_tracker.reset()
         self.density_guard.reset()
+        self.token_guard.reset()
         self._step_counter = 0
 
 

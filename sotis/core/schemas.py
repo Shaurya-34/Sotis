@@ -90,6 +90,10 @@ class StepEvent(BaseModel):
     args_hash     : str               = Field(default="")
     result_summary: Optional[str]     = Field(default=None, max_length=500)
     subtask_id    : Optional[str]     = Field(default=None)
+    tokens        : Optional[int]     = Field(default=None, ge=0,
+                                              description="Tokens consumed by this step "
+                                                          "(prompt+completion), if known. "
+                                                          "Used by the token-spike signal.")
 
     @model_validator(mode="before")
     @classmethod

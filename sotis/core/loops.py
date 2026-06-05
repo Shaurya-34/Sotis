@@ -364,3 +364,83 @@ class WorkspaceDensityGuard:
         self.latest_meltdown = False
         self.triggered_file = None
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TokenSpikeGuard — corroborating signal (Issue #3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TokenSpikeGuard:
+    """
+    Watches per-step token usage and flags a sudden spike relative to the
+    session's own rolling average.
+
+    A jump in tokens/step often accompanies loops and context-poisoning spirals
+    (the history bloats, so each call costs more). This is intentionally a
+    **corroborating** signal — it raises confidence in a meltdown verdict; it is
+    not a sole trigger, because a large legitimate tool result can spike tokens
+    once without any spiral.
+
+    Detection:
+        - Maintain a rolling window of the last ``window_size`` per-step token
+          counts (only steps that report ``tokens``).
+        - Once at least ``min_samples`` are seen, a step is a spike if its token
+          count exceeds ``spike_factor`` * the rolling mean.
+        - Steps with no token data are ignored (returns False).
+    """
+
+    def __init__(
+        self,
+        spike_factor: float = 3.0,
+        window_size: int = 10,
+        min_samples: int = 4,
+    ) -> None:
+        if spike_factor <= 1.0:
+            raise ValueError("spike_factor must be > 1.0")
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2")
+        if min_samples < 2 or min_samples > window_size:
+            raise ValueError("min_samples must be between 2 and window_size")
+        self.spike_factor = spike_factor
+        self.window_size = window_size
+        self.min_samples = min_samples
+        self._history: List[int] = []
+        self.latest_spike: bool = False
+        self.last_ratio: Optional[float] = None
+
+    def push_event(self, event: StepEvent) -> bool:
+        """
+        Record a step's token count and report whether it is a spike.
+
+        Returns True only when enough history exists AND the current step's
+        token count exceeds spike_factor * the rolling mean. Steps without
+        token data are recorded as no-ops and return False.
+        """
+        self.latest_spike = False
+        self.last_ratio = None
+
+        tokens = getattr(event, "tokens", None)
+        if tokens is None:
+            return False
+
+        is_spike = False
+        if len(self._history) >= self.min_samples:
+            mean = sum(self._history) / len(self._history)
+            if mean > 0:
+                ratio = tokens / mean
+                self.last_ratio = ratio
+                if ratio >= self.spike_factor:
+                    is_spike = True
+                    self.latest_spike = True
+
+        self._history.append(tokens)
+        if len(self._history) > self.window_size:
+            self._history.pop(0)
+
+        return is_spike
+
+    def reset(self) -> None:
+        """Clear token history (e.g., after a context reset)."""
+        self._history.clear()
+        self.latest_spike = False
+        self.last_ratio = None
+
