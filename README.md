@@ -93,19 +93,6 @@ Step telemetry streams to a JSON-L logger that the Streamlit dashboard renders.
 
 ---
 
-## The Problem
-
-Current AI agents fail predictably under long-horizon execution. As tasks grow longer, agents accumulate error and drift into terminal failure modes:
-
-- **Infinite Loops** — repeating the same tool calls with identical arguments
-- **Semantic Spirals** — rephrasing failed queries hoping for different outcomes
-- **Context Poisoning** — flooding history with massive error traces and linter warnings
-- **Edit Storms** — making rapid, uncoordinated file edits without shifting outputs
-
-Frontier models do not fail because they are simple. They fail because long-horizon execution decays their reliability envelope until strategy collapse occurs. Sotis acts as an active runtime stabilizer — monitoring execution, detecting behavioral meltdowns, and transparently resetting context to restore forward progress.
-
----
-
 ## Usage
 
 ```python
@@ -182,60 +169,21 @@ guard = SotisGuard(entropy_config=EntropyConfig(hard_threshold=2.7))
 | `2.0` | Good balance for agents using 3-4 tools regularly. |
 | `2.7` | Permissive — only fires on genuine chaotic switching across 6+ tools. |
 
-This was validated in the [detection gauntlet](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): default threshold fired a false positive on healthy diverse work (Scenario E), raising to 2.7 eliminated it while preserving 100% true positive detection.
+Validated in the [detection gauntlet](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): the default fired a false positive on healthy diverse work, raising to 2.7 eliminated it while keeping 100% true-positive detection.
 
-### Adaptive thresholding (opt-in)
+**Beyond the fixed threshold, three opt-in detectors** (full details in
+[USAGE.md](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md)):
 
-A single fixed threshold is wrong for most agents — the right threshold is the
-agent's *own* tool-call distribution, not a global default. Enable adaptive mode
-and Sotis learns a per-agent baseline at runtime and triggers at
-`mean + 2σ` over recent entropy, instead of a fixed number:
-
-```python
-guard = SotisGuard(entropy_config=EntropyConfig(adaptive=True))
-```
-
-An agent that legitimately fans out to many tools develops a higher baseline and
-stops false-positiving; a normally-focused agent that turns chaotic trips against
-its *own* norm even at low absolute entropy. During the cold-start window (before
-a baseline exists) it falls back to a conservative threshold, and loop detection
-still covers tight loops throughout. Tunable via `sigma_k`, `baseline_window`,
-`min_baseline_samples`, and `cold_start_threshold` on `EntropyConfig`.
-
-### Token-spike corroboration
-
-If you report per-step token usage on the `StepEvent` (`tokens=...`), Sotis tracks
-a rolling token/step average and flags a spike (default: ≥3× the mean). A spike
-is a **corroborating** signal, not a sole trigger — a single large tool result
-can spike tokens without any spiral — so it promotes a rising-entropy *early
-warning* into a meltdown rather than firing alone. Tune with the
-`token_spike_factor` argument to `SotisGuard`.
-
-### Invariant-verified checkpoints
-
-Rollback is only as trustworthy as how you define "good." By default Sotis rolls
-back to the last snapshot — but corruption often *precedes* the visible thrash,
-so that snapshot can itself be the poisoned state. Pass a `checkpoint_invariant`
-and rollback instead targets the most recent state that *passed* the invariant:
-
-```python
-from sotis.lib.langgraph_integration import SotisLangGraphGuard
-from sotis.core.checkpoint import python_imports_cleanly
-
-guard = SotisLangGraphGuard(
-    task_goal="...",
-    workspace_paths=["app/core.py", "app/util.py"],
-    checkpoint_invariant=python_imports_cleanly,   # every tracked .py must still parse
-)
-```
-
-After each clean batch of steps the guard calls `commit_verified()`, which
-snapshots the workspace *only if* the invariant holds. On meltdown, rollback
-restores the most recent verified snapshot (falling back to the original
-baseline if none exists). `python_imports_cleanly` ships built-in; supply any
-`Callable[[dict[str, str]], bool]` for other domains (JSON-schema checks,
-"tests still collect," etc.). Invariant exceptions are caught and treated as
-"not verified," so a buggy check can never crash the guard.
+- **Adaptive threshold** — learns a per-agent baseline and triggers at `mean + 2σ`
+  instead of a global number, so diverse agents stop false-positiving:
+  `EntropyConfig(adaptive=True)`.
+- **Token-spike corroboration** — flags a sudden jump in tokens/step (≥3× the
+  rolling mean) as a *corroborating* signal, not a sole trigger:
+  `SotisGuard(token_spike_factor=3.0)`.
+- **Invariant-verified checkpoints** — rollback targets the most recent state that
+  *passed* your invariant, not just the last snapshot (which may be the poisoned
+  one): `checkpoint_invariant=python_imports_cleanly`. Ships a built-in Python
+  invariant; supply any `Callable[[dict[str,str]], bool]`.
 
 ---
 
@@ -251,13 +199,15 @@ Sotis intervenes *during* execution. It intercepts spiraling tool calls, rolls b
 
 | Capability | Description |
 |---|---|
-| **Meltdown Detection** | Sliding-window Shannon entropy (w=5, H=1.5) + exact loop detection |
+| **Meltdown Detection** | Sliding-window Shannon entropy + exact/semantic loop detection |
+| **Adaptive Threshold** | Per-agent baseline (`mean + 2σ`) instead of a fixed global cutoff |
+| **Token-Spike Signal** | Corroborates a meltdown when tokens/step suddenly jump |
 | **Workspace Density Guard** | Detects infinite same-file edit cycles |
-| **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (≥60% token savings) |
+| **Verified-Checkpoint Reset** | Rolls back to a state proven good by your invariant, not just the last snapshot |
+| **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (~86% token savings) |
 | **Graceful Degradation** | GDS scoring preserves partial progress across resets |
 | **LangGraph Integration** | Native guard node — intercepts state, rolls back files |
-| **Document Processing** | PDF, XLSX, Word, CSV support + Jaccard semantic loop detection |
-| **LLM Support** | OpenAI, Anthropic, DeepSeek, Google Gemini |
+| **LLM Support** | OpenAI, Anthropic, DeepSeek, Google, any OpenAI-compatible endpoint |
 | **Observability** | Streamlit dashboard + structured JSON session logs |
 
 ---
@@ -268,7 +218,7 @@ Sotis operationalizes the formal reliability framework from *["Beyond pass@1: A 
 
 Four key findings from the paper that Sotis directly addresses:
 
-**Meltdown Onset Point (MOP)** — the paper quantifies the transition from coherent planning to chaotic looping via sliding-window Shannon entropy. Sotis implements this as a live runtime monitor with a calibrated threshold of H=1.5 bits over a 5-step window.
+**Meltdown Onset Point (MOP)** — the paper quantifies the transition from coherent planning to chaotic looping via sliding-window Shannon entropy. Sotis implements this as a live runtime monitor over a 5-step window, with either a fixed or per-agent adaptive threshold.
 
 **Super-linear reliability decay** — agent success rates decay faster than mathematically expected because errors are positively correlated across steps. A confused agent stays confused. Sotis acts as a circuit breaker that resets the error correlation coefficient by starting fresh from a verified checkpoint.
 
@@ -284,9 +234,9 @@ Four key findings from the paper that Sotis directly addresses:
 |---|---|
 | Entropy + loop detection latency | < 0.2ms per step |
 | Context distillation token reduction | 86.14% (BPE cl100k_base) |
-| Test suite | 127 tests, 88% coverage |
-| Live recovery | Verified on circular import and AST recursive loop traps |
-| Live LLM validation (llama-3.1-8b on Groq) | Raw agent: 1/4 requirements met. Sotis agent: 3/4 requirements met. |
+| Test suite | 159 tests passing |
+| Live recovery | Verified on circular-import and AST recursive-loop traps |
+| Verified-checkpoint rollback (live) | On a real Groq Llama-3.3-70B run, rolled back to a verified-good checkpoint, not the corrupt snapshot ([log](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/circular%20import%20trap/run_groq_llama70b_verified_rollback_20260605.txt)) |
 | Local model validation (mistral:latest via Ollama) | Caught a real TOOL_LOOP meltdown and corrected agent behavior after reset |
 | Detection accuracy (6-scenario gauntlet) | 100% true positive rate, 0% false negatives |
 | Total API cost for full validation suite | < $0.01 (Groq free tier) |
