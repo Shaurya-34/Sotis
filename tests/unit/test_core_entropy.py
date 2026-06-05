@@ -426,3 +426,75 @@ class TestEntropyLatency:
         assert avg_us < 150, (
             f"_shannon_entropy() avg {avg_us:.3f} µs is unexpectedly slow."
         )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 12. Adaptive per-agent threshold (Issue #1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAdaptiveThreshold:
+    """
+    Adaptive mode learns a per-agent baseline (mean + sigma_k*stdev) instead of
+    a fixed global threshold. Off by default; opt-in via EntropyConfig.
+    """
+
+    def test_disabled_by_default(self) -> None:
+        assert EntropyConfig().adaptive is False
+
+    def test_fixed_mode_unchanged_when_adaptive_off(self) -> None:
+        # A 4-tool fan-out: H = log2(4) = 2.0 >= 1.5, fires under the fixed default.
+        tracker = SessionEntropyTracker(EntropyConfig())
+        fired = None
+        for i, name in enumerate((["read", "grep", "edit", "run"] * 8)):
+            r = tracker.push_event(make_event(name, i))
+            if r.meltdown_detected:
+                fired = r
+                break
+        assert fired is not None
+        assert fired.adaptive_active is False
+        assert fired.effective_threshold == pytest.approx(1.5)
+
+    def test_adaptive_silences_healthy_fanout_agent(self) -> None:
+        # Same diverse agent should NOT trip in adaptive mode — high own-baseline.
+        tracker = SessionEntropyTracker(EntropyConfig(adaptive=True))
+        for i, name in enumerate((["read", "grep", "edit", "run"] * 12)):
+            r = tracker.push_event(make_event(name, i))
+            assert not r.meltdown_detected, f"adaptive false-positive at step {i}"
+
+    def test_adaptive_fires_on_break_from_own_norm(self) -> None:
+        # Focused agent (low baseline) that suddenly diversifies should trip,
+        # even at an absolute entropy well below the fixed 1.5 threshold.
+        focused_then_chaotic = ["read"] * 14 + ["a", "b", "c", "d", "e"] * 3
+        tracker = SessionEntropyTracker(EntropyConfig(adaptive=True))
+        fired = None
+        for i, name in enumerate(focused_then_chaotic):
+            r = tracker.push_event(make_event(name, i))
+            if r.meltdown_detected:
+                fired = r
+                break
+        assert fired is not None
+        assert fired.adaptive_active is True
+        assert fired.entropy < 1.5  # would NOT have fired under the fixed default
+
+    def test_cold_start_uses_conservative_threshold(self) -> None:
+        # Before min_baseline_samples accumulate, a diverse agent must not be
+        # flagged (cold_start_threshold is high), and adaptive_active is False.
+        cfg = EntropyConfig(adaptive=True, min_baseline_samples=10, cold_start_threshold=2.5)
+        tracker = SessionEntropyTracker(cfg)
+        # First few diverse steps: H ~ 1.585 (3 unique in window) < 2.5 cold start.
+        for i, name in enumerate(["a", "b", "c", "a", "b"]):
+            r = tracker.push_event(make_event(name, i))
+            if r.entropy is not None:
+                assert r.adaptive_active is False
+                assert r.effective_threshold == pytest.approx(2.5)
+                assert not r.meltdown_detected
+
+    def test_invalid_adaptive_config_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            EntropyConfig(adaptive=True, sigma_k=-1.0)
+        with pytest.raises(ValueError):
+            EntropyConfig(adaptive=True, baseline_window=1)
+        with pytest.raises(ValueError):
+            EntropyConfig(adaptive=True, min_baseline_samples=1)
+        with pytest.raises(ValueError):
+            EntropyConfig(adaptive=True, cold_start_threshold=0)

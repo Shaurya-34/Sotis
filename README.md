@@ -182,6 +182,24 @@ guard = SotisGuard(entropy_config=EntropyConfig(hard_threshold=2.7))
 
 This was validated in the [detection gauntlet](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): default threshold fired a false positive on healthy diverse work (Scenario E), raising to 2.7 eliminated it while preserving 100% true positive detection.
 
+### Adaptive thresholding (opt-in)
+
+A single fixed threshold is wrong for most agents — the right threshold is the
+agent's *own* tool-call distribution, not a global default. Enable adaptive mode
+and Sotis learns a per-agent baseline at runtime and triggers at
+`mean + 2σ` over recent entropy, instead of a fixed number:
+
+```python
+guard = SotisGuard(entropy_config=EntropyConfig(adaptive=True))
+```
+
+An agent that legitimately fans out to many tools develops a higher baseline and
+stops false-positiving; a normally-focused agent that turns chaotic trips against
+its *own* norm even at low absolute entropy. During the cold-start window (before
+a baseline exists) it falls back to a conservative threshold, and loop detection
+still covers tight loops throughout. Tunable via `sigma_k`, `baseline_window`,
+`min_baseline_samples`, and `cold_start_threshold` on `EntropyConfig`.
+
 ---
 
 ## Active Stabilization, Not Passive Tracing

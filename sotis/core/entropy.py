@@ -38,9 +38,10 @@ EntropyMonitor      : The primary callable. Stateless; call evaluate() per step.
 from __future__ import annotations
 
 import math
+import statistics
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 from sotis.core.schemas import MeltdownReason, StepEvent
 
@@ -59,18 +60,54 @@ class EntropyConfig:
     window_size       : Number of most-recent steps included in H(t) calculation.
                         Approved: N = 5.
     hard_threshold    : H(t) value above which a meltdown is immediately triggered.
-                        Approved: H_max = 1.5.
+                        Approved: H_max = 1.5. When ``adaptive`` is enabled this is
+                        used only as the cold-start fallback.
     trend_steps       : Number of consecutive steps with strictly increasing H(t)
                         before an ENTROPY_TREND early warning is raised.
                         Default: 3.
     min_window_fill   : Minimum number of steps that must exist before evaluation
                         begins. Below this, no signal is emitted.
                         Default: 3 (avoids false positives at session start).
+
+    Adaptive thresholding (opt-in, off by default)
+    ----------------------------------------------
+    A fixed global threshold is wrong for most agents — the right threshold is
+    the agent's own tool-call entropy distribution. When ``adaptive`` is on, the
+    monitor learns a per-agent baseline from recent H(t) history and triggers at
+    ``mean + sigma_k * stdev`` instead of the fixed ``hard_threshold``. An agent
+    that legitimately fans out to many tools develops a higher baseline (fewer
+    false positives); a normally-focused agent that turns chaotic trips against
+    its own norm even at modest absolute entropy.
+
+    adaptive             : Enable per-agent adaptive thresholding. Default: False.
+    baseline_window      : How many recent H(t) samples define the baseline.
+                           Default: 50 (a rolling window, so it drifts with the
+                           agent's role).
+    sigma_k              : Standard-deviation multiplier for the band.
+                           Default: 2.0 (mean + 2σ).
+    min_baseline_samples : Cold-start guard — until this many H(t) samples exist,
+                           fall back to ``cold_start_threshold``. Default: 10.
+    cold_start_threshold : Conservative threshold used during the cold-start
+                           window (before a baseline exists). Deliberately high so
+                           a legitimately diverse agent isn't flagged before its
+                           baseline is learned — loop detection still covers this
+                           period. Default: 2.5 bits.
+    min_band             : Floor on the (mean → threshold) gap, so a near-zero
+                           variance baseline can't make the threshold pathologically
+                           sensitive. Default: 0.25 bits.
     """
     window_size    : int   = 5
     hard_threshold : float = 1.5
     trend_steps    : int   = 3
     min_window_fill: int   = 3
+
+    # ── Adaptive thresholding (opt-in) ──
+    adaptive             : bool  = False
+    baseline_window      : int   = 50
+    sigma_k              : float = 2.0
+    min_baseline_samples : int   = 10
+    cold_start_threshold : float = 2.5
+    min_band             : float = 0.25
 
     def __post_init__(self) -> None:
         if self.window_size < 2:
@@ -81,6 +118,16 @@ class EntropyConfig:
             raise ValueError("trend_steps must be at least 2.")
         if self.min_window_fill < 1 or self.min_window_fill > self.window_size:
             raise ValueError("min_window_fill must be between 1 and window_size.")
+        if self.baseline_window < 2:
+            raise ValueError("baseline_window must be at least 2.")
+        if self.sigma_k < 0:
+            raise ValueError("sigma_k must be non-negative.")
+        if self.min_baseline_samples < 2 or self.min_baseline_samples > self.baseline_window:
+            raise ValueError("min_baseline_samples must be between 2 and baseline_window.")
+        if self.cold_start_threshold <= 0:
+            raise ValueError("cold_start_threshold must be positive.")
+        if self.min_band < 0:
+            raise ValueError("min_band must be non-negative.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,6 +158,8 @@ class EntropyResult:
     reason            : Optional[MeltdownReason] = None
     window_tools      : List[str]         = field(default_factory=list)
     unique_tool_count : int               = 0
+    effective_threshold: Optional[float]  = None   # threshold H was compared against
+    adaptive_active    : bool             = False  # True if the adaptive band fired
 
     @property
     def is_safe(self) -> bool:
@@ -183,6 +232,37 @@ class EntropyMonitor:
     def __init__(self, config: Optional[EntropyConfig] = None) -> None:
         self.config = config or EntropyConfig()
 
+    def _resolve_threshold(self, entropy_history: Optional[List[float]]) -> Tuple[float, bool]:
+        """
+        Decide the H(t) threshold to compare against for this evaluation.
+
+        Returns ``(threshold, adaptive_active)``.
+
+        When adaptive mode is off — or there aren't yet enough samples to trust a
+        baseline (cold start) — the fixed ``hard_threshold`` is used and
+        ``adaptive_active`` is False. Once ``min_baseline_samples`` H(t) values
+        have accumulated, the threshold becomes ``mean + sigma_k * stdev`` over
+        the most recent ``baseline_window`` samples, floored so the band is never
+        narrower than ``min_band`` above the mean.
+        """
+        cfg = self.config
+        if not cfg.adaptive:
+            return cfg.hard_threshold, False
+
+        history = entropy_history or []
+        if len(history) < cfg.min_baseline_samples:
+            # Cold start: not enough of the agent's own data yet. Use a
+            # conservative threshold so a legitimately diverse agent isn't
+            # flagged before its baseline is learned (loop detection still
+            # covers tight loops during this window).
+            return cfg.cold_start_threshold, False
+
+        window = history[-cfg.baseline_window:]
+        mean = statistics.fmean(window)
+        stdev = statistics.pstdev(window) if len(window) > 1 else 0.0
+        threshold = mean + max(cfg.sigma_k * stdev, cfg.min_band)
+        return threshold, True
+
     def evaluate(
         self,
         trajectory: Sequence[StepEvent],
@@ -221,8 +301,11 @@ class EntropyMonitor:
 
         h = _shannon_entropy(window_tools)
 
-        # ── Hard meltdown threshold ───────────────────────────────────────────
-        if h >= cfg.hard_threshold:
+        # Resolve the threshold: fixed, or the agent's own adaptive band.
+        threshold, adaptive_active = self._resolve_threshold(entropy_history)
+
+        # ── Meltdown threshold (fixed or adaptive) ────────────────────────────
+        if h >= threshold:
             return EntropyResult(
                 step_index=step_index,
                 entropy=h,
@@ -231,6 +314,8 @@ class EntropyMonitor:
                 reason=MeltdownReason.HIGH_ENTROPY,
                 window_tools=window_tools,
                 unique_tool_count=len(set(window_tools)),
+                effective_threshold=threshold,
+                adaptive_active=adaptive_active,
             )
 
         # ── Trend early warning ───────────────────────────────────────────────
@@ -252,6 +337,8 @@ class EntropyMonitor:
             reason=None,
             window_tools=window_tools,
             unique_tool_count=len(set(window_tools)),
+            effective_threshold=threshold,
+            adaptive_active=adaptive_active,
         )
 
     def compute_entropy(self, tool_names: Sequence[str]) -> float:
