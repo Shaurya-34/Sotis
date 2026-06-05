@@ -43,9 +43,52 @@ import os
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from sotis.core.schemas import ExecutionState, MeltdownSignal
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Invariant checking (Issue #2)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# An InvariantChecker decides whether a workspace state is "good" — i.e. safe to
+# resume from. It receives a snapshot of the current tracked-file contents as a
+# ``{absolute_path: content}`` mapping and returns True if the invariant holds.
+#
+# This is what lets rollback target a *verified* state rather than just the most
+# recent snapshot (which may itself be the silently-corrupted state that caused
+# the meltdown). Invariants are deliberately cheap and run on the hot path; any
+# exception they raise is caught and treated as "not verified" so a buggy or
+# slow check can never crash the guard.
+InvariantChecker = Callable[[Dict[str, str]], bool]
+
+
+def always_valid(_files: Dict[str, str]) -> bool:
+    """Default no-op invariant: every state is considered good."""
+    return True
+
+
+def python_imports_cleanly(_files: Dict[str, str]) -> bool:
+    """
+    Invariant: every tracked ``.py`` file parses without a SyntaxError.
+
+    A cheap, dependency-free proxy for "the code still collects/imports" — a
+    workspace where a tracked Python file no longer compiles is not a safe state
+    to resume from. Non-Python files are ignored. Missing/empty content passes
+    (nothing to break).
+    """
+    import ast
+    for path, content in _files.items():
+        if not path.endswith(".py"):
+            continue
+        if not content.strip():
+            continue
+        try:
+            ast.parse(content)
+        except SyntaxError:
+            return False
+    return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,9 +289,78 @@ class CheckpointManager:
     Not thread-safe by design — Sotis runs as single-threaded middleware.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        invariant: Optional[InvariantChecker] = None,
+        max_verified: int = 5,
+    ) -> None:
         self._baselines  : Dict[str, FileBaseline]       = {}
         self._checkpoints: List[WorkspaceCheckpoint]     = []
+        # ── Verified-checkpoint chain (Issue #2) ──
+        # Each entry is a {abs_path: FileBaseline} snapshot that PASSED the
+        # invariant at commit time. rollback() prefers the most recent of these
+        # over the single mutable baseline. Empty/None invariant => disabled,
+        # and behavior is identical to the original single-baseline manager.
+        self._invariant   : InvariantChecker = invariant or always_valid
+        self._has_invariant: bool            = invariant is not None
+        self._max_verified : int             = max(1, max_verified)
+        self._verified_chain: List[Dict[str, FileBaseline]] = []
+
+    # ── Invariant verification (Issue #2) ──────────────────────────────────────
+
+    def _snapshot_contents(self) -> Dict[str, str]:
+        """Read current on-disk content of all tracked files (best-effort)."""
+        out: Dict[str, str] = {}
+        for abs_path in self._baselines:
+            exists, content = _read_file_safe(abs_path)
+            out[abs_path] = content if exists else ""
+        return out
+
+    def check_invariant(self) -> bool:
+        """
+        Run the configured invariant against the current workspace state.
+
+        Returns False on any exception (never propagates — hot-path safety).
+        Returns True when no invariant is configured.
+        """
+        if not self._has_invariant:
+            return True
+        try:
+            return bool(self._invariant(self._snapshot_contents()))
+        except Exception:
+            return False
+
+    def commit_verified(self) -> bool:
+        """
+        If the current workspace state satisfies the invariant, push it onto the
+        verified-checkpoint chain as a known-good rollback target.
+
+        Call this at "quiet" moments — e.g. after a tool result the agent treats
+        as success — so a later rollback can target a *proven-good* state rather
+        than the most recent (possibly already-corrupted) snapshot.
+
+        Returns True if a verified snapshot was committed, False otherwise.
+        No-op (returns False) when no invariant is configured.
+        """
+        if not self._has_invariant:
+            return False
+        if not self.check_invariant():
+            return False
+
+        snap: Dict[str, FileBaseline] = {}
+        for abs_path in self._baselines:
+            exists, content = _read_file_safe(abs_path)
+            snap[abs_path] = FileBaseline(path=abs_path, content=content, exists=exists)
+
+        self._verified_chain.append(snap)
+        if len(self._verified_chain) > self._max_verified:
+            self._verified_chain.pop(0)
+        return True
+
+    @property
+    def verified_count(self) -> int:
+        """Number of verified-good snapshots currently retained."""
+        return len(self._verified_chain)
 
     # ── Tracking ──────────────────────────────────────────────────────────────
 
@@ -286,18 +398,31 @@ class CheckpointManager:
         """
         paths = list(self._baselines.keys())
         self._baselines.clear()
+        # Verified snapshots belong to the pre-reset execution; drop them so the
+        # post-reset run rebuilds its own verified chain from a clean slate.
+        self._verified_chain.clear()
         self.track(paths)
 
     def rollback(self) -> None:
         """
-        Restore all tracked files to their recorded baseline content.
+        Restore all tracked files to a known-good state.
 
-        For each tracked file:
-            - If the baseline existed, overwrite the current file with baseline content.
-            - If the baseline did not exist (file was absent at tracking time),
-              delete the file if it now exists (reverting an 'added' file).
+        Target selection (Issue #2):
+            - If a verified-checkpoint chain exists, restore to the MOST RECENT
+              verified snapshot — a state the invariant proved good, not merely
+              the last one before the meltdown (which may itself be corrupt).
+            - Otherwise fall back to the original single baseline (legacy
+              behavior, used when no invariant is configured).
+
+        For each tracked file in the chosen target:
+            - If it existed, overwrite the current file with the target content.
+            - If it did not exist, delete the current file if present (reverting
+              an 'added' file).
         """
-        for abs_path, baseline in self._baselines.items():
+        target: Dict[str, FileBaseline] = (
+            self._verified_chain[-1] if self._verified_chain else self._baselines
+        )
+        for abs_path, baseline in target.items():
             if baseline.exists:
                 try:
                     Path(abs_path).parent.mkdir(parents=True, exist_ok=True)
@@ -306,7 +431,7 @@ class CheckpointManager:
                 except OSError:
                     pass  # Best-effort rollback; log in production
             else:
-                # File didn't exist at baseline — remove it if it was created
+                # File didn't exist at target — remove it if it was created
                 try:
                     if os.path.exists(abs_path):
                         os.remove(abs_path)

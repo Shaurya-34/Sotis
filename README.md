@@ -62,11 +62,13 @@ Being clear about what Sotis does **not** do is as important as what it does:
   several steps back (low entropy, no repeats, still corrupt). Catching that
   needs a semantic, world-state signal (goal-progress regression, contradiction
   detection) — on the roadmap, not shipped.
-- **Checkpoint "goodness" is content-based, not invariant-verified (yet).**
-  Today Sotis rolls back to the last *snapshot*, not a state proven good by a
-  checked invariant. If a tool call silently corrupted state before the meltdown
-  was visible, the rollback target may itself be poisoned. Invariant-verified
-  checkpoints (re-read/re-validate at checkpoint time) are the planned fix.
+- **Checkpoint "goodness" can be invariant-verified (opt-in).** By default Sotis
+  rolls back to the last snapshot. Pass a `checkpoint_invariant` and rollback
+  instead targets the most recent state that *passed* your invariant — so if a
+  tool call silently corrupted state before the meltdown was visible, you don't
+  roll back into the poison. A built-in `python_imports_cleanly` invariant ships
+  (every tracked `.py` still parses); supply your own for other domains. See
+  [Tuning](#tuning).
 - **It bounds failure; it doesn't guarantee success.** Sotis stops the spiral
   and hands you a clean, recoverable state — it does not make a weak model
   finish the task.
@@ -208,6 +210,32 @@ is a **corroborating** signal, not a sole trigger — a single large tool result
 can spike tokens without any spiral — so it promotes a rising-entropy *early
 warning* into a meltdown rather than firing alone. Tune with the
 `token_spike_factor` argument to `SotisGuard`.
+
+### Invariant-verified checkpoints
+
+Rollback is only as trustworthy as how you define "good." By default Sotis rolls
+back to the last snapshot — but corruption often *precedes* the visible thrash,
+so that snapshot can itself be the poisoned state. Pass a `checkpoint_invariant`
+and rollback instead targets the most recent state that *passed* the invariant:
+
+```python
+from sotis.lib.langgraph_integration import SotisLangGraphGuard
+from sotis.core.checkpoint import python_imports_cleanly
+
+guard = SotisLangGraphGuard(
+    task_goal="...",
+    workspace_paths=["app/core.py", "app/util.py"],
+    checkpoint_invariant=python_imports_cleanly,   # every tracked .py must still parse
+)
+```
+
+After each clean batch of steps the guard calls `commit_verified()`, which
+snapshots the workspace *only if* the invariant holds. On meltdown, rollback
+restores the most recent verified snapshot (falling back to the original
+baseline if none exists). `python_imports_cleanly` ships built-in; supply any
+`Callable[[dict[str, str]], bool]` for other domains (JSON-schema checks,
+"tests still collect," etc.). Invariant exceptions are caught and treated as
+"not verified," so a buggy check can never crash the guard.
 
 ---
 

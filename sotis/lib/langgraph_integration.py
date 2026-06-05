@@ -65,7 +65,7 @@ except ImportError:
             super().__init__(content=content, id=id)
 
 
-from sotis.core.checkpoint import CheckpointManager
+from sotis.core.checkpoint import CheckpointManager, InvariantChecker
 from sotis.core.entropy import EntropyConfig, SessionEntropyTracker
 from sotis.core.loops import LoopConfig, SessionLoopTracker, WorkspaceDensityGuard
 from sotis.core.reset import ContextResetter, DistillationConfig
@@ -113,6 +113,7 @@ class SotisLangGraphGuard:
         distillation_config: Optional[DistillationConfig] = None,
         session_id: Optional[str] = None,
         max_resets: int = 5,
+        checkpoint_invariant: Optional[InvariantChecker] = None,
     ) -> None:
         self.task_goal = task_goal
         self.workspace_paths = workspace_paths or []
@@ -125,7 +126,10 @@ class SotisLangGraphGuard:
         self.entropy_tracker = SessionEntropyTracker(entropy_config)
         self.loop_tracker = SessionLoopTracker(loop_config)
         self.density_guard = WorkspaceDensityGuard(max_consecutive_edits=3)
-        self.checkpoint_mgr = CheckpointManager()
+        # When a checkpoint_invariant is supplied, rollback targets a
+        # verified-good workspace state instead of the most recent snapshot
+        # (which may itself be the silently-corrupted state). See Issue #2.
+        self.checkpoint_mgr = CheckpointManager(invariant=checkpoint_invariant)
         self.resetter = ContextResetter(distillation_config)
         self.telemetry = SessionLogger(self.session_id)
 
@@ -280,6 +284,13 @@ class SotisLangGraphGuard:
 
             # 3. Build LangGraph state message modifications (pruning message history)
             return self._build_reset_state_update(messages, distillation.prompt)
+
+        # No meltdown this pass: if any tool events were processed cleanly, this
+        # is a "quiet moment" — try to commit a verified-good checkpoint so a
+        # future rollback can target a proven-good state, not just the last
+        # snapshot. No-op unless a checkpoint_invariant was configured.
+        if new_events:
+            self.checkpoint_mgr.commit_verified()
 
         self.telemetry.log_state(self.state)
         return {}

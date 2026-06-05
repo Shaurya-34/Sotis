@@ -9,7 +9,14 @@ import os
 from pathlib import Path
 import pytest
 
-from sotis.core.checkpoint import CheckpointManager, FileBaseline, FileDiff, WorkspaceCheckpoint
+from sotis.core.checkpoint import (
+    CheckpointManager,
+    FileBaseline,
+    FileDiff,
+    WorkspaceCheckpoint,
+    always_valid,
+    python_imports_cleanly,
+)
 from sotis.core.schemas import ExecutionState, MeltdownSignal, MeltdownReason, Domain
 
 
@@ -243,3 +250,111 @@ def test_checkpoint_manager_reset_baselines(tmp_path):
     )
     checkpoint = mgr.snapshot(state, signal)
     assert checkpoint.file_diffs[str(file_a.resolve())].status == "unchanged"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Invariant-verified checkpoints (Issue #2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBuiltinInvariants:
+    def test_always_valid_passes_anything(self):
+        assert always_valid({}) is True
+        assert always_valid({"/x.py": "def broken(:"}) is True
+
+    def test_python_imports_cleanly_accepts_valid(self):
+        assert python_imports_cleanly({"/a.py": "x = 1\n"}) is True
+
+    def test_python_imports_cleanly_rejects_syntax_error(self):
+        assert python_imports_cleanly({"/a.py": "def f(:\n  pass"}) is False
+
+    def test_python_imports_cleanly_ignores_non_python(self):
+        assert python_imports_cleanly({"/a.txt": "def f(:"}) is True
+
+    def test_python_imports_cleanly_passes_empty(self):
+        assert python_imports_cleanly({"/a.py": "   "}) is True
+
+
+class TestVerifiedCheckpoints:
+    def test_no_invariant_means_disabled(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 1\n")
+        mgr = CheckpointManager()  # no invariant
+        mgr.track([str(f)])
+        assert mgr.commit_verified() is False   # disabled -> no-op
+        assert mgr.verified_count == 0
+
+    def test_commit_verified_pushes_on_pass(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 1\n")
+        mgr = CheckpointManager(invariant=python_imports_cleanly)
+        mgr.track([str(f)])
+        assert mgr.commit_verified() is True
+        assert mgr.verified_count == 1
+
+    def test_commit_verified_skips_on_fail(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 1\n")
+        mgr = CheckpointManager(invariant=python_imports_cleanly)
+        mgr.track([str(f)])
+        f.write_text("def broken(:\n")   # corrupt
+        assert mgr.commit_verified() is False
+        assert mgr.verified_count == 0
+
+    def test_rollback_restores_verified_not_corrupt(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 1\n")
+        mgr = CheckpointManager(invariant=python_imports_cleanly)
+        mgr.track([str(f)])
+        # good state committed
+        f.write_text("def go():\n    return 42\n")
+        assert mgr.commit_verified() is True
+        # silent corruption; not committable
+        f.write_text("def go(:\n  broken\n")
+        assert mgr.commit_verified() is False
+        # rollback must restore the verified-good state
+        mgr.rollback()
+        restored = f.read_text()
+        assert "return 42" in restored
+        import ast
+        ast.parse(restored)  # must not raise
+
+    def test_rollback_falls_back_to_baseline_without_verified(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("original = 1\n")
+        mgr = CheckpointManager(invariant=python_imports_cleanly)
+        mgr.track([str(f)])
+        # never commit a verified snapshot; modify then rollback
+        f.write_text("changed = 2\n")
+        mgr.rollback()
+        assert f.read_text() == "original = 1\n"   # legacy single-baseline behavior
+
+    def test_invariant_exception_is_safe(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 1\n")
+        def boom(_files):
+            raise RuntimeError("invariant blew up")
+        mgr = CheckpointManager(invariant=boom)
+        mgr.track([str(f)])
+        # must not propagate; treated as "not verified"
+        assert mgr.check_invariant() is False
+        assert mgr.commit_verified() is False
+
+    def test_verified_chain_is_bounded(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 0\n")
+        mgr = CheckpointManager(invariant=always_valid, max_verified=3)
+        mgr.track([str(f)])
+        for i in range(6):
+            f.write_text(f"x = {i}\n")
+            mgr.commit_verified()
+        assert mgr.verified_count == 3   # bounded; oldest evicted
+
+    def test_reset_baselines_clears_verified_chain(self, tmp_path):
+        f = tmp_path / "m.py"
+        f.write_text("x = 1\n")
+        mgr = CheckpointManager(invariant=always_valid)
+        mgr.track([str(f)])
+        mgr.commit_verified()
+        assert mgr.verified_count == 1
+        mgr.reset_baselines()
+        assert mgr.verified_count == 0

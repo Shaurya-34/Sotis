@@ -49,6 +49,9 @@ demo.secret.ps1
 *.mkv
 *.webm
 
+# Local work-in-progress / resume doc (not part of the published project)
+PROGRESS.md
+
 # Logs
 logs/
 *.log
