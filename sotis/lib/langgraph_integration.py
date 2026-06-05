@@ -263,7 +263,13 @@ class SotisLangGraphGuard:
             
             # Rollback modified files to prevent agent from inheriting a broken environment
             if checkpoint.modified_files:
-                logger.warning(f"[Sotis] Rolling back modified files to last stable state: {list(checkpoint.modified_files)}")
+                verified_n = self.checkpoint_mgr.verified_count
+                target = (f"verified-good checkpoint (#{verified_n} in chain)"
+                          if verified_n > 0 else "baseline")
+                logger.warning(
+                    f"[Sotis] Rolling back modified files to {target}: "
+                    f"{list(checkpoint.modified_files)}"
+                )
                 self.checkpoint_mgr.rollback()
 
             # Distill the prompt

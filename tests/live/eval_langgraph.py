@@ -37,6 +37,7 @@ except ImportError:
     sys.exit(0)
 
 from sotis.core.entropy import EntropyConfig
+from sotis.core.checkpoint import python_imports_cleanly
 from sotis.core.schemas import Domain
 from sotis.lib.langgraph_integration import SotisLangGraphGuard
 
@@ -462,7 +463,14 @@ if __name__ == "__main__":
         task_goal=goal,
         workspace_paths=tracked_paths,
         domain=Domain.SOFTWARE_ENGINEERING,
-        entropy_config=EntropyConfig(hard_threshold=2.2),
+        # Adaptive entropy (Issue #1): learn a per-agent baseline instead of a
+        # fixed threshold. cold_start_threshold keeps the old 2.2 behavior until
+        # a baseline forms.
+        entropy_config=EntropyConfig(adaptive=True, cold_start_threshold=2.2),
+        # Invariant-verified checkpoints (Issue #2): on rollback, restore the most
+        # recent state where every tracked .py still parses — not the last
+        # snapshot, which may be the silently-broken one that caused the spiral.
+        checkpoint_invariant=python_imports_cleanly,
     )
 
 
