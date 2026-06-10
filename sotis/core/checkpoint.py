@@ -362,6 +362,11 @@ class CheckpointManager:
         """Number of verified-good snapshots currently retained."""
         return len(self._verified_chain)
 
+    @property
+    def has_invariant(self) -> bool:
+        """True if a (non-default) invariant is configured."""
+        return self._has_invariant
+
     # ── Tracking ──────────────────────────────────────────────────────────────
 
     def track(self, paths: List[str]) -> None:

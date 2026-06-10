@@ -55,13 +55,16 @@ Being clear about what Sotis does **not** do is as important as what it does:
   circuit breaker for *accidental* failure, not a defense against a deliberate
   adversary. Pair it with a real injection/intent layer if that's your threat
   model.
-- **It catches loud failures, not quiet corruption.** Entropy + loop detection
-  read the *shape* of the tool-call stream, so they catch the visible spiral —
-  thrashing, repeats, edit storms. They are blind by construction to the *quiet*
-  failure: an agent confidently proceeding on a state that silently went wrong
-  several steps back (low entropy, no repeats, still corrupt). Catching that
-  needs a semantic, world-state signal (goal-progress regression, contradiction
-  detection) — on the roadmap, not shipped.
+- **Loud failures are behavioral; quiet ones need invariants.** Entropy + loop
+  detection read the *shape* of the tool-call stream, so they catch the visible
+  spiral — thrashing, repeats, edit storms — but are blind to the *quiet* failure:
+  an agent confidently proceeding on state that silently went wrong, with no loop
+  and no entropy spike. For the slice of quiet failure an invariant can express
+  (e.g. "a tracked file no longer parses"), `handoff_check=True` runs your
+  invariant at each handoff and intervenes at the source as a `STRUCTURAL_FAILURE`
+  before the bad state propagates. The harder, *semantic* case — where nothing
+  syntactic is wrong but the reasoning is — still needs a world-state signal
+  (goal-progress regression, contradiction detection) and remains on the roadmap.
 - **Checkpoint "goodness" can be invariant-verified (opt-in).** By default Sotis
   rolls back to the last snapshot. Pass a `checkpoint_invariant` and rollback
   instead targets the most recent state that *passed* your invariant — so if a

@@ -47,6 +47,9 @@ class MeltdownReason(str, Enum):
     TOOL_LOOP          = "TOOL_LOOP"           # Exact (tool, args_hash) pair repeated ≥3×
     COMBINED           = "COMBINED"            # Both entropy and loop signals active
     BUDGET_EXCEEDED    = "BUDGET_EXCEEDED"     # Step count exhausted for subtask
+    STRUCTURAL_FAILURE = "STRUCTURAL_FAILURE"  # Invariant failed at a handoff — bad
+                                               # state caught at the source, before the
+                                               # next node consumes it (not behavioral)
 
 
 class SessionStatus(str, Enum):

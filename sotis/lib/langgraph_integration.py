@@ -114,12 +114,18 @@ class SotisLangGraphGuard:
         session_id: Optional[str] = None,
         max_resets: int = 5,
         checkpoint_invariant: Optional[InvariantChecker] = None,
+        handoff_check: bool = False,
     ) -> None:
         self.task_goal = task_goal
         self.workspace_paths = workspace_paths or []
         self.session_id = session_id or f"sotis-lg-{uuid.uuid4().hex[:8]}"
         # Maximum context resets allowed before the session is hard-failed.
         self.max_resets = max_resets
+        # Structural detection (Issue #5): when True AND a checkpoint_invariant is
+        # set, run the invariant at each clean handoff. A failure means the state
+        # is bad even though behavior looked fine (no loop, no entropy spike) —
+        # catch it at the source before the next node consumes it.
+        self.handoff_check = handoff_check
 
         # Initialize core engine modules
         self.state = ExecutionState(session_id=self.session_id, domain=domain)
@@ -265,52 +271,86 @@ class SotisLangGraphGuard:
                     self.telemetry.log_state(self.state)
                     break
 
-        # 2. If a meltdown was triggered, perform checkpoint snapshot, file rollback, and context reset
+        # 2. If a behavioral meltdown was triggered, intervene (rollback + reset).
         if meltdown_detected and meltdown_signal:
-            logger.warning(f"[Sotis] Meltdown intercepted! Reason: {meltdown_signal.reason}. Triggering context reset.")
+            return self._intervene(messages, meltdown_signal)
 
-            # Snapshot current files and revert uncommitted edits back to baseline
-            checkpoint = self.checkpoint_mgr.snapshot(self.state, meltdown_signal)
-            
-            # Rollback modified files to prevent agent from inheriting a broken environment
-            if checkpoint.modified_files:
-                verified_n = self.checkpoint_mgr.verified_count
-                target = (f"verified-good checkpoint (#{verified_n} in chain)"
-                          if verified_n > 0 else "baseline")
-                logger.warning(
-                    f"[Sotis] Rolling back modified files to {target}: "
-                    f"{list(checkpoint.modified_files)}"
+        # 3. Structural check at the handoff (Issue #5). Behavior looked clean,
+        # but the workspace invariant may be FAILING — bad state that a loop/
+        # entropy monitor can't see. Catch it here, at the source, before the
+        # next node consumes it. Opt-in (handoff_check + a checkpoint_invariant).
+        if new_events and self.handoff_check and self.checkpoint_mgr.has_invariant:
+            if not self.checkpoint_mgr.check_invariant():
+                self.total_resets += 1
+                if self.total_resets > self.max_resets:
+                    self.state.status = SessionStatus.HARD_FAILED
+                    logger.error(f"[Sotis] Meltdown cap exhausted (resets: {self.total_resets}/{self.max_resets}). Hard failing.")
+                    raise RuntimeError(f"Sotis intercepted a terminal agent meltdown: Context reset limit ({self.max_resets}) exceeded.")
+                _vn = self.checkpoint_mgr.verified_count
+                structural_signal = MeltdownSignal(
+                    session_id=self.session_id,
+                    subtask_id=new_events[-1].subtask_id,
+                    triggered_at_step=new_events[-1].step_index,
+                    reason=MeltdownReason.STRUCTURAL_FAILURE,
+                    entropy_value=None,
+                    loop_tool=None,
+                    reset_attempt=self.total_resets,
+                    rollback_target=(f"verified-good #{_vn}" if _vn > 0 else "baseline"),
                 )
-                self.checkpoint_mgr.rollback()
+                self.state.record_meltdown(structural_signal)
+                self.telemetry.log_meltdown(structural_signal)
+                logger.warning("[Sotis] Structural failure at handoff: workspace invariant failed though behavior looked clean. Intervening at the source.")
+                return self._intervene(messages, structural_signal)
 
-            # Distill the prompt
-            distillation = self.resetter.distill(
-                state=self.state,
-                checkpoint=checkpoint,
-                task_goal=self.task_goal,
-            )
-
-            # Reset monitors for the clean slate run
-            self.entropy_tracker.reset()
-            self.loop_tracker.reset()
-            self.density_guard.reset()
-            self.checkpoint_mgr.reset_baselines()
-
-            # Transition from MELTDOWN → RESUMED
-            self.state.status = SessionStatus.RESUMED
-
-            # 3. Build LangGraph state message modifications (pruning message history)
-            return self._build_reset_state_update(messages, distillation.prompt)
-
-        # No meltdown this pass: if any tool events were processed cleanly, this
-        # is a "quiet moment" — try to commit a verified-good checkpoint so a
-        # future rollback can target a proven-good state, not just the last
-        # snapshot. No-op unless a checkpoint_invariant was configured.
+        # 4. Clean handoff: commit a verified-good checkpoint so a future rollback
+        # can target a proven-good state. No-op unless an invariant is configured.
         if new_events:
             self.checkpoint_mgr.commit_verified()
 
         self.telemetry.log_state(self.state)
         return {}
+
+    def _intervene(self, messages: List[BaseMessage], meltdown_signal: MeltdownSignal) -> Dict[str, Any]:
+        """
+        Perform the full intervention for a detected meltdown: snapshot the
+        workspace, roll back to the last verified-good (or baseline) state,
+        distill a resumption prompt, reset the monitors, and return the pruned
+        LangGraph state update. Shared by behavioral and structural detection.
+        """
+        logger.warning(f"[Sotis] Meltdown intercepted! Reason: {meltdown_signal.reason}. Triggering context reset.")
+
+        # Snapshot current files and revert uncommitted edits back to baseline
+        checkpoint = self.checkpoint_mgr.snapshot(self.state, meltdown_signal)
+
+        # Rollback modified files to prevent agent from inheriting a broken environment
+        if checkpoint.modified_files:
+            verified_n = self.checkpoint_mgr.verified_count
+            target = (f"verified-good checkpoint (#{verified_n} in chain)"
+                      if verified_n > 0 else "baseline")
+            logger.warning(
+                f"[Sotis] Rolling back modified files to {target}: "
+                f"{list(checkpoint.modified_files)}"
+            )
+            self.checkpoint_mgr.rollback()
+
+        # Distill the prompt
+        distillation = self.resetter.distill(
+            state=self.state,
+            checkpoint=checkpoint,
+            task_goal=self.task_goal,
+        )
+
+        # Reset monitors for the clean slate run
+        self.entropy_tracker.reset()
+        self.loop_tracker.reset()
+        self.density_guard.reset()
+        self.checkpoint_mgr.reset_baselines()
+
+        # Transition from MELTDOWN → RESUMED
+        self.state.status = SessionStatus.RESUMED
+
+        # Build LangGraph state message modifications (pruning message history)
+        return self._build_reset_state_update(messages, distillation.prompt)
 
 
     def _parse_new_tool_events(self, messages: List[BaseMessage]) -> List[StepEvent]:

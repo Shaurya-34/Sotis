@@ -206,3 +206,93 @@ def test_meltdown_records_rollback_target(tmp_path):
     # the recorded meltdown must carry a rollback_target
     sig = guard.state.meltdown_log[-1]
     assert sig.rollback_target in ("baseline",) or sig.rollback_target.startswith("verified-good")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Structural failure detection at handoffs (Issue #5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_handoff_check_off_by_default():
+    """handoff_check defaults to False — no structural detection unless opted in."""
+    guard = SotisLangGraphGuard(task_goal="x")
+    assert guard.handoff_check is False
+
+
+def test_structural_failure_caught_at_handoff(tmp_path):
+    """
+    An agent that silently corrupts a tracked file with otherwise-clean behavior
+    (single tool call, no loop, no entropy spike) is caught by the handoff
+    invariant and rolled back to the last verified-good state.
+    """
+    from sotis.core.checkpoint import python_imports_cleanly
+    from sotis.core.schemas import MeltdownReason
+    import ast
+
+    f = tmp_path / "mod.py"
+    f.write_text("x = 1\n")
+    guard = SotisLangGraphGuard(
+        task_goal="structural",
+        workspace_paths=[str(f)],
+        checkpoint_invariant=python_imports_cleanly,
+        handoff_check=True,
+    )
+
+    # Clean step: valid python -> invariant passes -> verified checkpoint committed
+    f.write_text("y = 2\n")
+    m1 = [
+        AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"c": "a"}, "id": "c1"}], id="ai1"),
+        ToolMessage(content="ok", name="write_file", tool_call_id="c1", id="t1"),
+    ]
+    upd1 = guard.guard_node({"messages": m1})
+    assert upd1 == {}                                  # no meltdown on a clean handoff
+    assert guard.checkpoint_mgr.verified_count == 1
+
+    # Corrupt step: broken python, but behaviorally clean (one new call, no loop)
+    f.write_text("def broken(:\n")
+    m2 = [
+        AIMessage(content="", tool_calls=[{"name": "write_file", "args": {"c": "b"}, "id": "c2"}], id="ai2"),
+        ToolMessage(content="ok", name="write_file", tool_call_id="c2", id="t2"),
+    ]
+    upd2 = guard.guard_node({"messages": m2})
+    assert "messages" in upd2                          # structural meltdown intervened
+    assert guard.state.meltdown_log[-1].reason == MeltdownReason.STRUCTURAL_FAILURE
+    ast.parse(f.read_text())                           # rolled back to a parseable state
+
+
+def test_no_structural_trigger_without_handoff_check(tmp_path):
+    """With handoff_check=False, a corrupt-but-behaviorally-clean step is NOT caught."""
+    from sotis.core.checkpoint import python_imports_cleanly
+
+    f = tmp_path / "mod.py"
+    f.write_text("x = 1\n")
+    guard = SotisLangGraphGuard(
+        task_goal="structural",
+        workspace_paths=[str(f)],
+        checkpoint_invariant=python_imports_cleanly,
+        handoff_check=False,   # opt-out
+    )
+    f.write_text("def broken(:\n")
+    msgs = [
+        AIMessage(content="", tool_calls=[{"name": "write_file", "args": {}, "id": "c1"}], id="ai1"),
+        ToolMessage(content="ok", name="write_file", tool_call_id="c1", id="t1"),
+    ]
+    upd = guard.guard_node({"messages": msgs})
+    assert upd == {}                                   # no structural detection
+    assert guard.total_resets == 0
+
+
+def test_handoff_check_noop_without_invariant(tmp_path):
+    """handoff_check=True but no invariant configured -> no structural triggers."""
+    f = tmp_path / "mod.py"
+    f.write_text("x = 1\n")
+    guard = SotisLangGraphGuard(
+        task_goal="x", workspace_paths=[str(f)], handoff_check=True,
+    )
+    f.write_text("def broken(:\n")
+    msgs = [
+        AIMessage(content="", tool_calls=[{"name": "write_file", "args": {}, "id": "c1"}], id="ai1"),
+        ToolMessage(content="ok", name="write_file", tool_call_id="c1", id="t1"),
+    ]
+    upd = guard.guard_node({"messages": msgs})
+    assert upd == {}
+    assert guard.total_resets == 0
