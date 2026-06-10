@@ -471,6 +471,11 @@ if __name__ == "__main__":
         # recent state where every tracked .py still parses — not the last
         # snapshot, which may be the silently-broken one that caused the spiral.
         checkpoint_invariant=python_imports_cleanly,
+        # Structural detection (Issue #5): run the invariant at each handoff, so a
+        # syntactically-broken file written in a behaviorally-clean step is caught
+        # as STRUCTURAL_FAILURE before the next node consumes it — not only as a
+        # later behavioral loop.
+        handoff_check=True,
     )
 
 
