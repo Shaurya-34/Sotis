@@ -138,38 +138,46 @@ f:\Sotis/
 
 ---
 
-## 📊 Empirical Gains & Benchmarks
+## 📊 Validation: what's measured vs. what's simulated
 
-Sotis has been exhaustively stress-tested across three primary domains: **Software Engineering (SE)**, **Web Research (WR)**, and **Document Processing (DP)** across different horizons (Short to Very Long):
+> **Read this first.** Sotis's evidence comes in two tiers. Be precise about which
+> is which — conflating them is the easiest way to lose a reader's trust.
 
-### 1. Success Rate Comparison (pass@1)
-Across all long-horizon tasks where a standard Baseline agent collapses into loops, Sotis-wrapped agents exhibit dramatic reliability gains:
+### Tier 1 — Real LLM agents (the evidence that counts)
 
-| Domain | Task Horizon | Baseline pass@1 | Sotis pass@1 | Reliability Gain |
-| :--- | :--- | :---: | :---: | :---: |
-| **Software Engineering** | Very Long | 0.0% | **100.0%** | **+100.0%** |
-| **Web Research** | Very Long | 0.0% | **100.0%** | **+100.0%** |
-| **Document Processing** | Very Long | 0.0% | **100.0%** | **+100.0%** |
+Detection + verified-good rollback have been validated on **real models** (Groq
+Llama-3.3-70B, OpenRouter Gemini) against real failure traps. Full unedited
+transcripts in [`ExperimentLog/`](ExperimentLog/). Representative live result:
+on a circular-import trap, the agent spiraled into an identical-tool loop; Sotis
+detected it (`TOOL_LOOP` @ step 23) and rolled back to a **verified-good
+checkpoint** (a state proven to still parse), not the most-recent (possibly
+broken) snapshot.
 
-### 2. Graceful Degradation Score (GDS) Summary
-On very long runs, baseline agents experience strategy collapse at early stages, resulting in low GDS scores. Sotis successfully recovers from meltdowns, achieving near-perfect progress scores despite incurring minor reset penalties:
+A 6-scenario detection gauntlet scored **100% true-positive detection** with a
+**33% false-positive rate at the default threshold** (eliminated by raising it —
+this is what motivated the adaptive threshold).
 
-*   **Software Engineering (Very Long)**: Baseline GDS: `0.1000` | Sotis GDS: **`0.9600`**
-*   **Web Research (Very Long)**: Baseline GDS: `0.1000` | Sotis GDS: **`0.9600`**
-*   **Document Processing (Very Long)**: Baseline GDS: `0.1000` | Sotis GDS: **`0.9600`**
+**Honest scope:** these runs prove Sotis *detects real meltdowns and restores a
+safe, resumable state*. They do **not** yet prove it raises end-to-end task
+*success* — one clean run ended on a rate limit without the weak model passing
+the tests. As the README says: Sotis bounds failure; it doesn't guarantee
+success. A controlled real-agent A/B (with vs. without Sotis, pass@1 across
+seeds) is the next step (`bench/real_runner.py`).
 
-### 3. Reproducing the Empirical Results: Sotis Benchmarking Harness
-The empirical numbers shown above are generated programmatically by the scientific evaluation harness inside `sotis/bench/`.
+### Tier 2 — Simulation harness (logic sanity-check, NOT a benchmark)
 
-*   **Task Generator (`sotis/bench/tasks.py`)**: Defines domain-aware task DAGs (Software Engineering, Web Research, and Document Processing) categorized by execution horizons (`short`, `medium`, `long`, and `very_long`).
-*   **Scientific Simulation Runner (`sotis/bench/runner.py`)**: Runs $k=3$ comparative trials of Baseline agents (which collapse and fail under stress-inducing tool loops) vs. Sotis-stabilized agents. The runner evaluates pass@1 rates and GDS scores, then automatically aggregates and compiles results back into the scientific ledger file (`performance_metrics.txt`).
+`sotis/bench/runner.py` runs a **scripted** agent — diverse tools while healthy,
+then a hardcoded flip into an identical-tool loop at a fixed step. The baseline
+arm is **fail-by-construction**; the Sotis arm always recovers. So the
+oft-quoted "Baseline 0% → Sotis 100%" and "GDS 0.10 → 0.96" are **guaranteed by
+the script, not measured on any model.** Their only legitimate use is verifying
+that Sotis's detection/reset/GDS *logic* fires correctly under a controlled
+meltdown — an integration test, not a performance claim. Treat those figures
+accordingly and do not cite them as agent results.
 
-#### How to Execute the Benchmark Suite:
-To re-run the evaluations, regenerate telemetry session logs, and update the ledger:
 ```bash
-python -m sotis.bench.runner
+python -m sotis.bench.runner   # runs the SIMULATION (logic check), writes logs/ + ledger
 ```
-The runner will print out real-time execution status for each domain-horizon combination, writing detailed trace JSON logs directly to the `logs/` directory for immediate diagnostics.
 
 ---
 

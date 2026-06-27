@@ -10,6 +10,10 @@ Repository: f:\Sotis
 
 LEGEND
   [LIVE]    Real empirical result, measured and verified.
+  [SIM]     Scripted simulation / logic sanity-check. NOT a real-agent result —
+            the baseline is fail-by-construction, so any baseline-vs-Sotis gain
+            is guaranteed by the script, not measured. Real-agent evidence lives
+            in ExperimentLog/ (live Groq/OpenRouter transcripts).
   [PENDING] Not yet executed - target phase noted.
 ================================================================================
 
@@ -191,12 +195,21 @@ Test Platform:   Windows 11, Python 3.10.11, pytest 9.x
   - GDS weight sum normalization check (= 1.0):       100% SUCCESS  [PASSED]
   - Configurable reset degradation scoring:          100% SUCCESS  [PASSED]
   - Max possible remaining GDS calculation:           100% SUCCESS  [PASSED]
-PHASE 4 RESULTS  |  Empirical Benchmark: Baseline vs Sotis (k=3 repeats)
+PHASE 4 RESULTS  |  [SIM] Scripted logic check: Baseline vs Sotis (k=3 repeats)
 Completed:       2026-05-29
 Test Platform:   Windows 11, Python 3.10.11, pytest 9.x
+
+  *** READ THIS — these numbers are NOT a real-agent benchmark. ***
+  They come from sotis/bench/runner.py, which runs a SCRIPTED agent: it cycles
+  diverse tools while healthy, then is hardcoded to flip into an identical-tool
+  loop at a fixed step. The baseline arm cannot recover (no Sotis), the Sotis arm
+  always recovers. So "0% -> 100%" and the GDS gains below are GUARANTEED BY
+  CONSTRUCTION — they verify that Sotis's detection/reset/GDS LOGIC fires
+  correctly under a controlled meltdown, nothing more. For evidence on REAL LLM
+  agents (detection + verified-good rollback firing live), see ExperimentLog/.
 --------------------------------------------------------------------------------
 
-[A] SOFTWARE ENGINEERING (SE) DOMAIN
+[A] SOFTWARE ENGINEERING (SE) DOMAIN  [SIM]
 +------------------+-------------------+-------------------+-------------------+
 | Task Horizon     | Baseline pass@1   | Sotis pass@1      | Reliability Gain  |
 +------------------+-------------------+-------------------+-------------------+
@@ -226,7 +239,7 @@ Test Platform:   Windows 11, Python 3.10.11, pytest 9.x
 | Very_long        | 0.0%              | 100.0%            | +100.0%           |
 +------------------+-------------------+-------------------+-------------------+
 
-GRACEFUL DEGRADATION SCORES (GDS) - [LIVE Phase 4]
+GRACEFUL DEGRADATION SCORES (GDS) - [SIM Phase 4 — scripted, not measured]
 +-----------------+------------------+-----------------+-----------------+
 | Domain          | Task Length      | Baseline GDS    | Sotis GDS       |
 +-----------------+------------------+-----------------+-----------------+
@@ -271,10 +284,12 @@ Test Platform:   Windows 11, Python 3.10.11, pytest 9.x
   - Offline Track 2 circular import trap simulation: 100% SUCCESS (fully recovered, tests passed)    [PASSED]
 
 --------------------------------------------------------------------------------
-REPRESENTATIVE TRAJECTORY LOG  [LIVE Phase 4]
+REPRESENTATIVE TRAJECTORY LOG  [SIM Phase 4 — scripted run, not a real agent]
 --------------------------------------------------------------------------------
-Below is the live structured telemetry log from Sotis session 'bench-sotis-se-medium-0'
-demonstrating a successful meltdown detection, interception, reset, and recovery flow:
+Below is the structured telemetry from the SCRIPTED simulation session
+'bench-sotis-se-medium-0'. The meltdown here was injected by the harness, not
+produced by a model — it illustrates the detect/intercept/reset/recover flow.
+For the same flow on a REAL agent, see ExperimentLog/ (Groq Llama-3.3-70B):
 
 1. Step 1-20: Healthy execution of subtask 'se-med-1' (diverse distinct tool calls)
    - Step 1: list_dir(index=1)

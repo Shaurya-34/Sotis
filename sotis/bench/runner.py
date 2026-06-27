@@ -1,8 +1,26 @@
 """
 sotis.bench.runner
 ==================
-Scientific evaluation runner performing k=3 comparative benchmark runs
-between Baseline agents and Sotis-wrapped agents, updating metrics ledger.
+SIMULATION HARNESS — logic sanity-check, NOT an LLM-agent benchmark.
+
+IMPORTANT — read before citing any number this produces:
+    This harness does NOT run real LLM agents. It runs a *scripted* agent whose
+    behaviour is hardcoded: it cycles through diverse tools while "healthy", and
+    at a fixed step it deterministically flips into an identical-tool loop. The
+    "baseline" arm (use_sotis=False) is therefore *constructed to fail*, and the
+    "sotis" arm (use_sotis=True) is *constructed to recover*. The resulting
+    "Baseline 0% -> Sotis 100%" / GDS gains are GUARANTEED BY CONSTRUCTION.
+
+What this DOES legitimately verify:
+    That the detection (entropy/loop), reset, rollback, and GDS *logic* fire
+    correctly and in the right order under a known, controlled meltdown — i.e.
+    it is an oracle/integration test of Sotis's machinery.
+
+What it does NOT show:
+    That Sotis improves real-agent task success. For that, see the live agent
+    transcripts in ExperimentLog/ (real Groq/OpenRouter runs) and the real A/B
+    benchmark (bench/real_runner.py, when available). Do not present the numbers
+    below as measured agent performance.
 """
 
 from __future__ import annotations
@@ -23,7 +41,15 @@ def simulate_horizon_run(
     domain: Domain, horizon: str, use_sotis: bool, session_id: str
 ) -> Tuple[bool, float, List[StepEvent]]:
     """
-    Simulates a single horizon execution run for a given domain and horizon.
+    Run ONE scripted horizon simulation (NOT a real LLM agent).
+
+    The agent's tool sequence is hardcoded: diverse tools while healthy, then a
+    deterministic identical-tool loop injected at a fixed step. With use_sotis
+    the loop is intercepted and the run recovers; without it the loop exhausts
+    the budget and the subtask fails. The pass/fail outcome is therefore decided
+    by the script, not by any model. Use only to verify Sotis's detection/reset
+    logic, never as evidence of real-agent improvement.
+
     Returns (success, gds_score, trajectory).
     """
     subtasks = get_bench_subtasks(domain, horizon)
@@ -136,8 +162,9 @@ def simulate_horizon_run(
 
 class BenchmarkRunner:
     """
-    Harness that runs k=3 repeat simulations comparing Baseline vs Sotis,
-    calculating success rates and GDS scores, and updating the ledger.
+    Runs k repeats of the SCRIPTED simulation (see module docstring) comparing a
+    fail-by-construction baseline vs Sotis, and writes the results to the ledger
+    clearly labelled as a simulation. NOT a real-agent benchmark.
     """
 
     def __init__(self, repeats: int = 3) -> None:
@@ -151,7 +178,8 @@ class BenchmarkRunner:
         results = {}
         
         print("================================================================================")
-        print("                     SOTIS EMPIRICAL BENCHMARK HARNESS                          ")
+        print("        SOTIS SIMULATION HARNESS  (scripted logic check — NOT a real-agent       ")
+        print("        benchmark; baseline is fail-by-construction. See module docstring.)       ")
         print("================================================================================")
         
         for domain in domains:
@@ -205,7 +233,10 @@ class BenchmarkRunner:
         
         # Let's find the exact Phase 4 block
         phase_4_replacement = (
-            "PHASE 4 RESULTS  |  Empirical Benchmark: Baseline vs Sotis (k=3 repeats)\n"
+            "PHASE 4 RESULTS  |  [SIMULATION] Scripted logic check: Baseline vs Sotis (k=3)\n"
+            "                 |  NOT a real-agent benchmark. Baseline is fail-by-construction;\n"
+            "                 |  the 0%->100% / GDS gains are guaranteed by the script, not\n"
+            "                 |  measured. Real-agent evidence: ExperimentLog/ transcripts.\n"
             f"Completed:       {time.strftime('%Y-%m-%d')}\n"
             "Test Platform:   Windows 11, Python 3.10.11, pytest 9.x\n"
             "--------------------------------------------------------------------------------\n\n"
@@ -215,7 +246,7 @@ class BenchmarkRunner:
             f"{wr_table}\n\n"
             "[C] DOCUMENT PROCESSING (DP) DOMAIN\n"
             f"{dp_table}\n\n"
-            "GRACEFUL DEGRADATION SCORES (GDS) - [LIVE Phase 4]\n"
+            "GRACEFUL DEGRADATION SCORES (GDS) - [SIMULATION Phase 4 — scripted, not measured]\n"
             f"{gds_table}\n\n"
             "--------------------------------------------------------------------------------\n"
             "PHASE 5 RESULTS"
