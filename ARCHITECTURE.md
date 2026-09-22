@@ -77,7 +77,7 @@ Sotis uses three complementary, lightweight monitors in the hot-path (averaging 
 *   **Baselines & Rollbacks**: If a meltdown occurs, Sotis automatically rolls back all tracked files to their last known stable subtask baseline. This prevents the agent from inheriting syntactically broken files or circular dependency traps upon resumption.
 
 ### 3. Context Distillation (Resumption Prompting)
-*   **~87% Token Reduction**: Distillation yields approximately **87.73%** reduction in token overhead under standard large-horizon trajectories, verified using OpenAI's `cl100k_base` BPE tokenizer (`tiktoken` library). Sotis completely prunes the message history (using LangGraph `RemoveMessage` signals) and replaces it with a clean, structured briefing.
+*   **Up to ~86% Token Reduction**: On live agent runs of 8–16 steps, the distilled briefing is **67–86%** smaller than the logged history (measured with OpenAI's `cl100k_base` BPE tokenizer via `tiktoken`). The briefing has a fixed cost of ~250–440 tokens, so the saving grows with trajectory length and is negative on very short runs (under ~5 steps). Sotis completely prunes the message history (using LangGraph `RemoveMessage` signals) and replaces it with a clean, structured briefing.
 *   **Resumption System Prompt**: Synthesizes a fresh, hyper-compact resumption briefing that injects:
     1.  A friendly notification of why the reset occurred.
     2.  The original high-level task goal.
@@ -129,7 +129,7 @@ f:\Sotis/
 │       ├── runner.py           # scientific comparison runner (Baseline vs Sotis k=3)
 │       └── tasks.py            # domain-aware task generators (short, med, long, very_long)
 │
-└── tests/                      # High-coverage verification suite (127 passed tests)
+└── tests/                      # Verification suite (163 unit tests passing)
     ├── run_live_document_handling.py  # PDF/XLSX vector haystack and corruption stress test
     ├── run_live_langgraph_evaluation.py# Full LangGraph graph stress testing
     ├── run_live_web_research.py    # Offline/online web-research simulation

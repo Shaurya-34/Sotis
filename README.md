@@ -34,13 +34,10 @@ resumes it.
 - ✅ **LangGraph agents** — drop in `SotisLangGraphGuard` as a guard node
   ([USAGE.md](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md))
 - ✅ **Custom ReAct / tool-calling loops** — wrap your loop with `SotisGuard`
+  for detection, and wire recovery with `CheckpointManager` + `ContextResetter`
+  (or use the built-in `SotisRuntime`)
 - ✅ **Any LLM provider** — OpenAI, Anthropic, DeepSeek, Google, or
   OpenAI-compatible endpoints (Groq, OpenRouter)
-
-Sotis is **not** a plugin for closed agents you don't control — e.g. Claude
-Code or Codex. Those expose no hook into their loop, so the rollback/reset
-intervention isn't possible there. If you're building the agent, Sotis fits;
-if you're using someone else's finished agent, it doesn't.
 
 ---
 
@@ -110,8 +107,17 @@ for step in range(max_steps):
     meltdown = guard.watch(action.name, action.args, result.summary)
 
     if meltdown:
-        guard.reset()  # rolls back files, distills context, resumes cleanly
+        guard.reset()  # clears detector state; recovery is below
 ```
+
+`SotisGuard` is detection only. `reset()` clears the detectors' sliding windows
+so the next steps are judged fresh; it does not touch your files or your
+agent's context. Recovery (rolling tracked files back to the last good
+checkpoint, replacing the history with a distilled resumption briefing, and
+enforcing the 2-reset cap) is done for you by `SotisLangGraphGuard` and
+`SotisRuntime`. In a custom loop, wire it yourself with `CheckpointManager`
+(`track()` before the subtask, `rollback()` on meltdown) and
+`ContextResetter.distill()` to build the briefing.
 
 ### What it looks like in practice
 
@@ -172,7 +178,7 @@ guard = SotisGuard(entropy_config=EntropyConfig(hard_threshold=2.7))
 | `2.0` | Good balance for agents using 3-4 tools regularly. |
 | `2.7` | Permissive — only fires on genuine chaotic switching across 6+ tools. |
 
-Validated in the [detection gauntlet](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): the default fired a false positive on healthy diverse work, raising to 2.7 eliminated it while keeping 100% true-positive detection.
+Validated in the [detection gauntlet](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/real_world_validation/test5_gauntlet_20260529_212356.txt): the default fired a false positive on healthy diverse work, raising to 2.7 eliminated it while still catching all 3 meltdown scenarios.
 
 **Beyond the fixed threshold, three opt-in detectors** (full details in
 [USAGE.md](https://github.com/Shaurya-34/Sotis/blob/main/USAGE.md)):
@@ -207,7 +213,7 @@ Sotis intervenes *during* execution. It intercepts spiraling tool calls, rolls b
 | **Token-Spike Signal** | Corroborates a meltdown when tokens/step suddenly jump |
 | **Workspace Density Guard** | Detects infinite same-file edit cycles |
 | **Verified-Checkpoint Reset** | Rolls back to a state proven good by your invariant, not just the last snapshot |
-| **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (~86% token savings) |
+| **Transparent Reset** | Git-diff checkpointing + distilled context rebuild (up to ~86% token savings on longer runs) |
 | **Graceful Degradation** | GDS scoring preserves partial progress across resets |
 | **LangGraph Integration** | Native guard node — intercepts state, rolls back files |
 | **LLM Support** | OpenAI, Anthropic, DeepSeek, Google, any OpenAI-compatible endpoint |
@@ -236,12 +242,12 @@ Four key findings from the paper that Sotis directly addresses:
 | Metric | Result |
 |---|---|
 | Entropy + loop detection latency | < 0.2ms per step |
-| Context distillation token reduction | 86.14% (BPE cl100k_base) |
-| Test suite | 159 tests passing |
+| Context distillation token reduction | 67–86% on live runs of 8–16 steps (BPE cl100k_base, vs. the logged history). The briefing is a fixed ~250–440 tokens, so on runs shorter than ~5 steps a reset costs tokens rather than saving them |
+| Test suite | 163 unit tests passing |
 | Live recovery | Verified on circular-import and AST recursive-loop traps |
 | Verified-checkpoint rollback (live) | On a real Groq Llama-3.3-70B run, rolled back to a verified-good checkpoint, not the corrupt snapshot ([log](https://github.com/Shaurya-34/Sotis/blob/main/ExperimentLog/circular%20import%20trap/run_groq_llama70b_verified_rollback_20260605.txt)) |
 | Local model validation (mistral:latest via Ollama) | Caught a real TOOL_LOOP meltdown and corrected agent behavior after reset |
-| Detection accuracy (6-scenario gauntlet) | 100% true positive rate, 0% false negatives |
+| Detection (6-scenario gauntlet) | Caught all 3 meltdown scenarios (0 misses); 1 false positive in 3 healthy scenarios at the default threshold, removed by raising it to 2.7 |
 | Total API cost for full validation suite | < $0.01 (Groq free tier) |
 
 Full empirical ledger: [`performance_metrics.txt`](https://github.com/Shaurya-34/Sotis/blob/main/performance_metrics.txt)

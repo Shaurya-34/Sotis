@@ -160,31 +160,32 @@ plt.close()
 print("OK charts/4_latency_overhead.png")
 
 
-# ── Chart 5: Token reduction — raw vs distilled ────────────────────────────────
-fig, ax = plt.subplots(figsize=(7, 5))
+# ── Chart 5: Token reduction — logged history vs distilled briefing ───────────
+# Measured by replaying ContextResetter.distill() over the live LangGraph runs in
+# logs/session_sotis-lg-*.json (runs of 8+ steps at their meltdown point).
+# The briefing is a roughly fixed size, so the saving grows with run length.
+fig, ax = plt.subplots(figsize=(8, 5))
 apply_base_style(fig, ax)
 
-labels = ["Raw Trajectory\nTokens", "Sotis Resumption\nPrompt Tokens"]
-values = [100, 12.27]
-colors = [BASELINE, SOTIS]
+run_steps  = [8, 10, 10, 16, 16]
+history    = [1526, 1144, 1593, 1571, 3272]   # logged history tokens
+distilled  = [439, 378, 437, 408, 440]        # resumption briefing tokens
 
-bars = ax.bar(labels, values, color=colors, width=0.45, zorder=3)
+x = np.arange(len(run_steps))
+w = 0.38
+ax.bar(x - w/2, history, width=w, color=BASELINE, zorder=3, label="Logged history")
+ax.bar(x + w/2, distilled, width=w, color=SOTIS, zorder=3, label="Sotis briefing")
 
-# Labels above bars (in data coordinates only)
-ax.text(bars[0].get_x() + bars[0].get_width()/2, 103,
-        "100%", ha="center", va="bottom", color=BASELINE, fontsize=13, fontweight="bold")
-ax.text(bars[1].get_x() + bars[1].get_width()/2, 15.5,
-        "~12%", ha="center", va="bottom", color=SOTIS, fontsize=13, fontweight="bold")
+for i, (h, d) in enumerate(zip(history, distilled)):
+    ax.text(x[i], h + 60, f"-{(1 - d / h) * 100:.1f}%", ha="center", va="bottom",
+            color=TEXT, fontsize=11, fontweight="bold")
 
-# Arrow and label in data coordinates
-ax.annotate("", xy=(0.78, 50), xytext=(0.22, 50),
-            arrowprops=dict(arrowstyle="->", color=TEXT, lw=2))
-ax.text(0.5, 56, "87.7% reduction", ha="center", va="bottom",
-        color=TEXT, fontsize=12, fontweight="bold")
-
-ax.set_ylabel("Relative Token Count (%)", fontsize=12)
-ax.set_ylim(0, 125)
-ax.set_title("Context Distillation: Token Reduction\n(tiktoken BPE cl100k_base measurement)",
+ax.set_xticks(x)
+ax.set_xticklabels([f"{s} steps" for s in run_steps])
+ax.set_ylabel("Tokens (tiktoken cl100k_base)", fontsize=12)
+ax.set_ylim(0, 3700)
+ax.legend(facecolor=BG, edgecolor=GRID, labelcolor=TEXT, fontsize=10, loc="upper left")
+ax.set_title("Context Distillation on Live Runs: 67–86% Token Reduction\n(fixed-size briefing, so savings grow with run length)",
              fontsize=13, fontweight="bold", pad=14)
 
 fig.tight_layout()
