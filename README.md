@@ -114,8 +114,9 @@ for step in range(max_steps):
 so the next steps are judged fresh; it does not touch your files or your
 agent's context. Recovery (rolling tracked files back to the last good
 checkpoint, replacing the history with a distilled resumption briefing, and
-enforcing the 2-reset cap) is done for you by `SotisLangGraphGuard` and
-`SotisRuntime`. In a custom loop, wire it yourself with `CheckpointManager`
+enforcing a reset cap) is done for you by `SotisLangGraphGuard` and
+`SotisRuntime`. `SotisRuntime` allows 2 resets per subtask; `SotisLangGraphGuard`
+allows `max_resets` per session (default 5). In a custom loop, wire it yourself with `CheckpointManager`
 (`track()` before the subtask, `rollback()` on meltdown) and
 `ContextResetter.distill()` to build the briefing.
 

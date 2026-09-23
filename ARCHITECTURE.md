@@ -89,7 +89,7 @@ Sotis uses three complementary, lightweight monitors in the hot-path (averaging 
 ### 4. Graceful Degradation Score (GDS)
 Rather than scoring task completion as a binary pass/fail, Sotis measures partial progress using a topologically validated Directed Acyclic Graph (DAG) of subtasks:
 $$\text{GDS} = \sum (\text{Subtask Weight} \times \text{Success Multiplier})$$
-Where $\text{Success Multiplier} = \max(0.0, 1.0 - (\text{Resets Used} \times 0.2))$ for successfully completed subtasks. If a subtask consumes more than its hard cap of **2 resets**, it is marked as `HARD_FAILED` and execution stops.
+Where $\text{Success Multiplier} = \max(0.0, 1.0 - (\text{Resets Used} \times 0.2))$ for successfully completed subtasks. In `SotisRuntime`, a subtask that needs more than **2 resets** is marked as `HARD_FAILED` and execution stops. `SotisLangGraphGuard` counts resets for the whole session instead, and hard-fails once it passes `max_resets` (default 5).
 
 ---
 

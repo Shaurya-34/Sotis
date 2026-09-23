@@ -436,6 +436,9 @@ def run_live_eval(guard: SotisLangGraphGuard, model_provider: str, api_key: str)
             if step_count > 80:
                 print("\n[ERROR] Safety Step limit exceeded. Hard stopping.")
                 break
+        # The break above only leaves the node loop; stop the stream too.
+        if step_count > 80:
+            break
 
     print(f"\nLive execution finished in {step_count} transitions. Resets used: {guard.total_resets}")
 

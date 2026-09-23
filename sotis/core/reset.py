@@ -159,6 +159,7 @@ class ContextResetter:
         state       : ExecutionState,
         checkpoint  : WorkspaceCheckpoint,
         task_goal   : str,
+        max_resets  : int = 2,
     ) -> DistillationResult:
         """
         Produce a distilled resumption prompt from the current session state.
@@ -168,6 +169,7 @@ class ContextResetter:
         state       : Current ExecutionState (trajectory, subtasks).
         checkpoint  : WorkspaceCheckpoint produced by CheckpointManager.
         task_goal   : The original high-level task description.
+        max_resets  : The caller's reset cap, shown as "Reset #N/max_resets".
 
         Returns
         -------
@@ -183,7 +185,7 @@ class ContextResetter:
         sections: List[str] = []
 
         if cfg.include_warning_note:
-            sections.append(self._build_warning_section(checkpoint))
+            sections.append(self._build_warning_section(checkpoint, max_resets))
 
         sections.append(self._build_goal_section(task_goal))
         sections.append(self._build_progress_section(state, checkpoint))
@@ -214,7 +216,7 @@ class ContextResetter:
 
     # ── Section builders ──────────────────────────────────────────────────────
 
-    def _build_warning_section(self, checkpoint: WorkspaceCheckpoint) -> str:
+    def _build_warning_section(self, checkpoint: WorkspaceCheckpoint, max_resets: int) -> str:
         reason_text = {
             MeltdownReason.HIGH_ENTROPY.value : "high tool-call entropy (disorganised execution pattern)",
             MeltdownReason.ENTROPY_TREND.value: "a sustained rising entropy trend (early meltdown signal)",
@@ -224,7 +226,7 @@ class ContextResetter:
         }.get(checkpoint.meltdown_reason, checkpoint.meltdown_reason)
 
         return (
-            f"## Context Reset Notice (Reset #{checkpoint.reset_number}/2)\n"
+            f"## Context Reset Notice (Reset #{checkpoint.reset_number}/{max_resets})\n"
             f"The previous execution context was reset after detecting {reason_text} "
             f"at step {checkpoint.snapshot_at_step}. "
             f"Your verified progress has been preserved. "

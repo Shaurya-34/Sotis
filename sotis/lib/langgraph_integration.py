@@ -338,6 +338,7 @@ class SotisLangGraphGuard:
             state=self.state,
             checkpoint=checkpoint,
             task_goal=self.task_goal,
+            max_resets=self.max_resets,
         )
 
         # Reset monitors for the clean slate run

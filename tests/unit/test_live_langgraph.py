@@ -110,7 +110,8 @@ def test_sotis_guard_meltdown_and_reset(tmp_path):
 
     # Resumption briefing checks
     distilled_prompt = human_msgs[0].content
-    assert "Context Reset Notice (Reset #1/2)" in distilled_prompt
+    # The label shows the guard's real cap (max_resets defaults to 5), not a hardcoded 2
+    assert "Context Reset Notice (Reset #1/5)" in distilled_prompt
     assert "repeated identical tool calls" in distilled_prompt
     assert "Fix standard cycle" in distilled_prompt
     assert "Instructions" in distilled_prompt
